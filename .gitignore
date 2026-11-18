@@ -1,0 +1,30 @@
+# Secrets and environment
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+
+# Caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.pytest-tmp/
+
+# Runtime state (never shipped)
+.breakdown/
+
+# OS
+.DS_Store
+Thumbs.db

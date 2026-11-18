@@ -1,0 +1,762 @@
+workflow_id: oneshot.breakdown
+definition_version: 1
+definition:
+  pin_at_workflow_start:
+  - workflow_id
+  - definition_version
+  - definition_digest
+  mutation_after_run_start: prohibited
+vocabularies:
+  execution_status:
+  - not_run
+  - in_progress
+  - completed
+  - cancelled
+  - failed
+  criterion_result:
+  - valid
+  - not_valid
+  - uncertainty
+  capability_coverage:
+  - covered
+  - partial
+  - not_covered
+  - uncertainty
+artifact_keys:
+  semantics: logical_keys_not_physical_paths
+  physical_path_assignment:
+    owner: runtime
+    source: artifact_storage_policy
+  rules:
+  - JSON records are authoritative.
+  - Markdown reports reference their authoritative JSON source.
+  - Role processors return typed records, not physical paths.
+digests:
+  algorithm: sha256
+  serialization: canonical_json_sorted_keys
+  source_checkpoint_identity:
+  - repository_identity
+  - commit_sha
+  - sorted_file_hashes
+  - relevant_untracked_path_hashes
+  source_checkpoint_metadata:
+  - captured_at
+  approval_binding:
+  - frozen_plan_hash
+  - approved_source_checkpoint_hash
+  - canonical_user_approval_record
+cost_budget:
+  per_workflow:
+    max_tokens: 500000
+    max_tool_calls: 200
+  per_stage:
+    default_max_tokens: 40000
+    completion_reserve: 50000
+  on_exceeded:
+    route: completion
+    terminal_outcome: failed
+    reason: budget_exhausted
+observability:
+  persistent_events:
+  - stage_entered
+  - stage_completed
+  - stage_failed
+  - stage_cancelled
+  - artifact_produced
+  - approval_requested
+  - approval_recorded
+  - cost_threshold_approached
+  - run_completed
+  ephemeral_events:
+  - activity_updated
+processing_plan_schema:
+  required:
+  - objective
+  - input_refs
+  - steps
+  - expected_output_keys
+  - completion_criteria
+  - evidence_required
+  optional:
+  - constraints
+  - unresolved_items
+  - execution_status
+  runtime_fields:
+  - execution_status
+implementation_plan_schema:
+  structured_output: true
+  required:
+  - plan_id
+  - revision
+  - objective
+  - requirement_refs
+  - source_checkpoint_ref
+  - technology_decisions
+  - tasks
+  - integration_checks
+  - success_criteria
+  optional:
+  - fixture_refs
+  - unresolved_items
+  - prerequisites
+  task_rules:
+    task_unit: cohesive_independently_verifiable_change
+    minimum_target_paths: 1
+    execution_order: sequential
+    uncertainty_allowed_in_build: false
+    expected_result_required: true
+    validation_required: true
+    capability_reuse_decision_required: true
+schema_validation:
+  owner: runtime
+  validation_points:
+  - workflow_definition_load
+  - stage_input_resolution
+  - stage_output_before_persistence
+  - artifact_read_before_use
+  - decision_record_before_transition
+  - frozen_plan_before_approval
+  - build_input_before_source_effects
+  - completion_record_before_terminal_state
+  model_rules:
+    reject_unknown_fields: true
+    required_fields_must_be_present: true
+    enum_values_must_be_declared: true
+    references_must_resolve: true
+    referenced_digest_must_match: true
+    schema_version_required: true
+    timezone_aware_timestamps_required: true
+    empty_required_text: prohibited
+    duplicate_identifiers: prohibited
+  stage_definition_rules:
+    stage_ids_unique: true
+    orders_unique_and_contiguous: true
+    owners_declared: true
+    operations_declared: true
+    requires_keys_known_or_initial: true
+    transition_targets_exist: true
+    decision_actions_declared: true
+    forward_edges_acyclic: true
+    loop_back_edges_validated_separately: true
+    terminal_routes_resolve: true
+  artifact_rules:
+    logical_keys_unique: true
+    producer_required_except_initial_request: true
+    consumer_follows_producer_or_declared_loop: true
+    json_authoritative: true
+    markdown_requires_source_json_ref: true
+    atomic_write_required: true
+    canonical_serialization_required: true
+    content_digest_required: true
+    digest_verified_before_read: true
+  processing_plan_rules:
+    exactly_one_per_cross_role_handoff: true
+    destination_stage_must_match: true
+    input_refs_must_resolve: true
+    expected_output_keys_match_destination: true
+    decision_stage_consumes_destination_plan: true
+  approval_rules:
+    decision_addressed_to_current_stage: true
+    action_allowed_by_stage: true
+    bound_artifacts_current: true
+    bound_digests_match: true
+    approve_only_authorizes_next_source_effect_stage: true
+    chat_text_not_approval: true
+  implementation_plan_rules:
+    one_canonical_plan: true
+    requirement_trace_complete: true
+    task_ids_unique: true
+    task_sequence_contiguous_from_one: true
+    target_paths_non_empty: true
+    target_paths_unique_unless_explicit_dependency: true
+    target_dispositions_declared: true
+    capability_reuse_evidence_required: true
+    uncertainty_prohibited_in_build_tasks: true
+    expected_result_required: true
+    validation_steps_required: true
+  failure_behavior:
+    criterion_result: not_valid
+    persist_validation_evidence: true
+    block_downstream_transition: true
+    source_effects_allowed: false
+dependency_validation:
+  owner: runtime
+  forward_stage_order:
+  - research_proposal
+  - research_approval
+  - research_execution
+  - findings_review
+  - implementation_planning
+  - plan_approval
+  - build_execution
+  - completion
+  forward_edges:
+  - from: research_proposal
+    to: research_approval
+  - from: research_approval
+    to: research_execution
+    when: approve
+  - from: research_execution
+    to: findings_review
+  - from: findings_review
+    to: implementation_planning
+  - from: implementation_planning
+    to: plan_approval
+  - from: plan_approval
+    to: build_execution
+    when: approve
+  - from: build_execution
+    to: completion
+  terminal_edges:
+  - from: research_approval
+    to: completion
+    when: cancel_or_timeout
+  - from: plan_approval
+    to: completion
+    when: decline_or_timeout_or_loop_exhausted
+  - from: build_execution
+    to: completion
+    when: success_failure_or_budget_exhausted
+  - from: any_stage
+    to: completion
+    when: cancelled_or_budget_exhausted
+  loop_back_edges:
+  - from: plan_approval
+    to: implementation_planning
+    when: request_changes
+    max_loops: 3
+    invalidate:
+    - frozen_plan
+    - frozen_plan_hash
+    - preflight_result
+    - build_execution_processing_plan
+    - pending_plan_approval
+  - from: build_execution
+    to: implementation_planning
+    when: newly_required_path_or_plan_contradiction
+    criterion_result: uncertainty
+    synchronization: prohibited
+    requires_new_approval: true
+  validation_method:
+    forward_edges: stdlib_graphlib_topological_sorter
+    loop_back_edges: explicit_bounded_transition_validation
+stages:
+- id: research_proposal
+  order: 1
+  kind: role
+  owner: auditor
+  operation: create_research_proposal
+  purpose: Inspect the authoritative repository and available capabilities, preserve exact user intent,
+    and create the bounded Research proposal.
+  requires:
+  - initial_request
+  produces:
+  - exact_user_intent
+  - candidate_requirements
+  - capability_coverage
+  - research_questions
+  - candidate_source_responsibilities
+  - source_checkpoint
+  - research_proposal
+  - research_proposal_report
+  - research_execution_processing_plan
+  creates_processing_plan:
+    name: research_execution_processing_plan
+    destination_stage: research_execution
+    authored_by: auditor
+    schema_ref: processing_plan_schema
+  completion_criteria:
+  - exact_user_request_preserved
+  - all_candidate_requirements_classified
+  - uncertainty_mapped_to_research_questions
+  - exact_paths_physically_verified
+  - no_implementation_plan_created
+  timeout_seconds: 600
+  on_failure:
+    route: runtime_recovery
+    resume_at: research_proposal
+    max_recovery_attempts: 2
+- id: research_approval
+  order: 2
+  kind: decision
+  owner: user
+  operation: record_research_approval
+  purpose: Approve or cancel the proposed Research scope.
+  requires:
+  - research_proposal
+  - research_proposal_report
+  - research_execution_processing_plan
+  - source_checkpoint
+  options:
+  - approve
+  - cancel
+  processing_plan_activation:
+    plan: research_execution_processing_plan
+    activated_on: approve
+    activated_by: runtime
+  transitions:
+    on_approve: research_execution
+    on_cancel: completion
+    on_timeout: completion
+  output_by_action:
+    approve:
+    - research_approval_record
+    cancel:
+    - research_approval_record
+    - cancellation_record
+    - retained_evidence
+  decision_binding:
+    binds:
+    - research_proposal_ref
+    - research_proposal_digest
+    - research_execution_processing_plan_ref
+    - research_execution_processing_plan_digest
+    - source_checkpoint_ref
+    - source_checkpoint_hash
+    - run_id
+    - session_id
+    - user_identity
+    - timestamp
+  timeout_seconds: 86400
+- id: research_execution
+  order: 3
+  kind: role
+  owner: researcher
+  operation: execute_research
+  purpose: Answer every approved Research question with provenance, contradictions, limitations, and unresolved
+    information preserved.
+  requires:
+  - research_proposal
+  - research_execution_processing_plan
+  - research_approval_record
+  - source_checkpoint
+  produces:
+  - research_request
+  - research_todo
+  - research_response
+  - research_report
+  - evidence_references
+  - fixture_specifications
+  - resolved_questions
+  - unresolved_questions
+  source_rules:
+    prefer:
+    - accepted_requirement_source
+    - authoritative_repository_source
+    - repository_tests_and_configuration
+    - official_specifications
+    - official_sdk_documentation
+    - authorized_internal_sources
+    prohibited:
+    - synthetic_samples_as_evidence
+    - invented_source_identity
+    - invented_repository_path
+    - unverified_claim_as_fact
+  delegation:
+    default_workers: 1
+    maximum_parallel_workers: 3
+    maximum_delegation_rounds: 3
+    worker_access: read_only
+    worker_output_authority: evidence_input_only
+  completion_criteria:
+  - every_approved_question_addressed
+  - material_findings_have_provenance
+  - contradictions_preserved
+  - missing_information_explicit
+  - implementation_not_selected
+  - research_response_schema_valid
+  timeout_seconds: 900
+  on_failure:
+    route: runtime_recovery
+    resume_at: research_execution
+    max_recovery_attempts: 2
+- id: findings_review
+  order: 4
+  kind: role
+  owner: auditor
+  operation: review_research_findings
+  purpose: Classify Research findings, normalize evidence, and prepare a non-prescriptive Planning handoff.
+  requires:
+  - research_proposal
+  - research_response
+  - evidence_references
+  - fixture_specifications
+  - resolved_questions
+  - unresolved_questions
+  - exact_user_intent
+  - source_checkpoint
+  sub_roles:
+  - coder
+  produces:
+  - classified_findings
+  - normalized_evidence
+  - reviewed_fixture_specifications
+  - reviewed_unresolved_questions
+  - findings_review
+  - findings_review_report
+  - implementation_planning_processing_plan
+  creates_processing_plan:
+    name: implementation_planning_processing_plan
+    destination_stage: implementation_planning
+    authored_by: auditor
+    activation: on_stage_completion
+    schema_ref: processing_plan_schema
+  completion_criteria:
+  - findings_trace_to_requirements
+  - evidence_provenance_preserved
+  - contradictions_preserved
+  - unresolved_items_not_hidden
+  - no_architecture_selected
+  - no_build_tasks_created
+  timeout_seconds: 900
+  on_failure:
+    route: runtime_recovery
+    resume_at: findings_review
+    max_recovery_attempts: 2
+- id: implementation_planning
+  order: 5
+  kind: role
+  owner: planner
+  operation: create_implementation_plan
+  purpose: Create the single authoritative Implementation Plan with cohesive ordered Build tasks, approved
+    paths, reuse decisions, expected results, and validation.
+  requires:
+  - implementation_planning_processing_plan
+  - classified_findings
+  - normalized_evidence
+  - reviewed_fixture_specifications
+  - reviewed_unresolved_questions
+  - exact_user_intent
+  - source_checkpoint
+  produces:
+  - planning_gap_analysis
+  - planning_gap_resolutions
+  - implementation_plan
+  - planning_review_result
+  - frozen_plan
+  - frozen_plan_hash
+  - preflight_result
+  - build_execution_processing_plan
+  runtime_steps:
+  - id: freeze_plan
+    inputs:
+    - implementation_plan
+    - source_checkpoint
+    - definition_version
+    outputs:
+    - frozen_plan
+    - frozen_plan_hash
+  - id: preflight_check
+    checks:
+    - source_checkpoint_freshness
+    - implementation_plan_schema_valid
+    - requirement_trace_complete
+    - no_uncertainty_in_build_tasks
+    - all_target_paths_mapped
+    - all_target_dispositions_declared
+    - no_unapproved_path_overlap
+    - capability_reuse_evidence_present
+    - covered_capability_not_reimplemented
+    - partial_capability_has_remaining_responsibility
+    - task_expected_results_present
+    - task_validation_present
+    - integration_checks_present_when_needed
+    - required_artifacts_present
+    outputs:
+    - preflight_result
+  creates_processing_plan:
+    name: build_execution_processing_plan
+    destination_stage: build_execution
+    authored_by: planner
+    activated_by: runtime
+    activation_requires: preflight_result.criterion_result == valid
+    schema_ref: processing_plan_schema
+  completion_criteria:
+  - implementation_plan_schema_valid
+  - all_requirements_traced
+  - all_tasks_cohesive
+  - all_paths_authorized
+  - reuse_decisions_evidence_backed
+  - preflight_result.criterion_result == valid
+  timeout_seconds: 1200
+  on_failure:
+    route: runtime_recovery
+    resume_at: implementation_planning
+    max_recovery_attempts: 2
+- id: plan_approval
+  order: 6
+  kind: decision
+  owner: user
+  operation: record_plan_approval
+  purpose: Approve, request changes to, or decline the frozen Implementation Plan.
+  requires:
+  - implementation_plan
+  - frozen_plan
+  - frozen_plan_hash
+  - preflight_result
+  - build_execution_processing_plan
+  - source_checkpoint
+  precondition: preflight_result.criterion_result == valid
+  options:
+  - approve
+  - request_changes
+  - decline
+  processing_plan_activation:
+    plan: build_execution_processing_plan
+    activated_on: approve
+    activated_by: runtime
+  transitions:
+    on_approve: build_execution
+    on_request_changes:
+      return_to: implementation_planning
+      invalidate:
+      - frozen_plan
+      - frozen_plan_hash
+      - preflight_result
+      - build_execution_processing_plan
+      - pending_plan_approval
+      max_loops: 3
+      on_exhausted: completion
+    on_decline: completion
+    on_timeout: completion
+  output_by_action:
+    approve:
+    - plan_approval_record
+    - approval_hash
+    - approved_plan_revision
+    - approved_source_checkpoint
+    request_changes:
+    - plan_approval_record
+    decline:
+    - plan_approval_record
+    - cancellation_record
+    - retained_evidence
+  decision_binding:
+    binds:
+    - frozen_plan_ref
+    - frozen_plan_hash
+    - implementation_plan_revision
+    - build_execution_processing_plan_ref
+    - build_execution_processing_plan_digest
+    - source_checkpoint_ref
+    - source_checkpoint_hash
+    - preflight_result_ref
+    - preflight_result_digest
+    - run_id
+    - session_id
+    - user_identity
+    - timestamp
+  timeout_seconds: 86400
+- id: build_execution
+  order: 7
+  kind: role
+  owner: builder
+  operation: execute_build
+  purpose: Execute approved cohesive tasks in a sandbox, validate results, and prepare synchronization
+    for Runtime authorization.
+  requires:
+  - build_execution_processing_plan
+  - implementation_plan
+  - frozen_plan
+  - frozen_plan_hash
+  - preflight_result
+  - plan_approval_record
+  - approval_hash
+  - approved_plan_revision
+  - approved_source_checkpoint
+  authorization_checks:
+  - approval_action_is_approve
+  - approval_hash_matches
+  - frozen_plan_hash_matches
+  - source_checkpoint_matches
+  - preflight_result.criterion_result == valid
+  - task_targets_match_approved_plan
+  execution_order: sequential
+  stop_on_criterion:
+  - not_valid
+  - uncertainty
+  synchronization:
+    preparation_owner: builder
+    authorization_owner: runtime
+    execution_owner: execution_service
+    reconciliation_owner: runtime
+    requires:
+    - task_results_valid
+    - integration_validation_valid
+    - no_unexpected_paths
+    - approval_bindings_current
+    - source_preconditions_current
+  produces:
+  - task_results
+  - applied_changes
+  - validation_results
+  - build_result
+  - synchronization_result
+  - resulting_source_checkpoint
+  - execution_evidence
+  on_budget_exhausted:
+    route: completion
+    preserve:
+    - partial_build_result
+    - task_results
+    - budget_exhausted_record
+    - failure_record
+  on_failure:
+    route: completion
+    preserve:
+    - partial_build_result
+    - task_results
+    - execution_evidence
+    - failure_record
+  next: completion
+- id: completion
+  order: 8
+  kind: deterministic
+  owner: runtime
+  operation: record_completion
+  purpose: Record the terminal outcome, changed paths, validation, retained evidence, remaining work,
+    cost, and terminal state.
+  accepts:
+    success:
+      requires:
+      - approved_plan_revision
+      - build_result
+      - synchronization_result
+      - resulting_source_checkpoint
+      - execution_evidence
+    partial:
+      requires:
+      - approved_plan_revision
+      - partial_build_result
+      - execution_evidence
+    cancelled:
+      requires:
+      - cancellation_record
+      - retained_evidence
+    failed:
+      requires:
+      - failure_record
+      - retained_evidence
+  records:
+  - completion_outcome
+  - changed_paths
+  - validation_results
+  - criterion_results
+  - remaining_work
+  - retained_evidence
+  - resulting_source_checkpoint
+  - cost_summary
+  - terminal_state
+  produces:
+  - completion_record
+  - retained_evidence
+  emits:
+  - run_completed
+  on_failure:
+    terminal_state: failed
+    preserve:
+    - partial_completion_evidence
+    - completion_failure_record
+ownership:
+  user:
+    stages:
+    - research_approval
+    - plan_approval
+    owns:
+    - explicit_research_authority
+    - explicit_build_authority
+  auditor:
+    stages:
+    - research_proposal
+    - findings_review
+    sub_roles:
+    - coder
+    application_source_changes: false
+  researcher:
+    stages:
+    - research_execution
+    application_source_changes: false
+  planner:
+    stages:
+    - implementation_planning
+    application_source_changes: false
+  builder:
+    stages:
+    - build_execution
+    application_source_changes: sandbox_only
+    does_not_own:
+    - synchronization_authorization
+    - completion_state
+  runtime:
+    stages:
+    - completion
+    kind: lifecycle_coordination
+    owns:
+    - definition_pinning
+    - stage_progression
+    - artifact_validation
+    - artifact_persistence
+    - approval_binding
+    - budget_enforcement
+    - action_guards
+    - recovery_routing
+    - processing_plan_persistence
+    - synchronization_authorization
+    - synchronization_reconciliation
+    - cancellation_recording
+    - completion_recording
+    - event_persistence
+approval_boundary:
+  implementation_requires:
+  - recorded_plan_approval
+  - plan_approval_action_is_approve
+  - exact_frozen_plan_hash
+  - exact_approved_plan_revision
+  - matching_approval_hash
+  - matching_source_checkpoint
+  - preflight_result.criterion_result == valid
+  - matching_build_execution_processing_plan
+  changes_to_approved_package:
+    return_to: implementation_planning
+    require_new_freeze: true
+    require_new_preflight: true
+    require_new_build_execution_processing_plan: true
+    require_user_approval_again: true
+handoff_rules:
+- Preserve exact original user intent and preceding artifact references.
+- Use authoritative JSON records for workflow state.
+- Treat Markdown as a readable projection, never workflow authority.
+- Preserve evidence, contradictions, limitations, and unresolved questions.
+- Never invent missing input, source identity, repository path, evidence, or result.
+- Every cross-role execution handoff requires one processing plan.
+- Decision stages consume the processing plan prepared for their approved destination.
+- Role processors never invoke the next workflow role directly.
+- Criterion uncertainty never advances a decision or source-changing stage.
+- Lifecycle failure and criterion not_valid are distinct.
+role_guidance:
+  shared_source: agents/role_guidance.md
+  role_sources:
+    auditor: agents/skills/auditor/SKILL.md
+    researcher: agents/skills/researcher/SKILL.md
+    coder: agents/skills/coder/SKILL.md
+    planner: agents/skills/planner/SKILL.md
+    builder: agents/skills/builder/SKILL.md
+  semantics:
+    executable: false
+    workflow_authority: false
+    artifact_generation_reference: true
+  primary_roles:
+  - user
+  - runtime
+  - auditor
+  - researcher
+  - planner
+  - builder
+  sub_roles:
+    coder:
+      parent_role: auditor
+      allowed_stages:
+      - findings_review
+  non_model_roles:
+  - user
+  - runtime

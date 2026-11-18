@@ -1,0 +1,17 @@
+role: builder
+cases:
+  - name: approved_task_completes_with_evidence
+    operation: execute_build
+    stage: build_execution
+    profile: build_completed
+    expect: {output_valid: true}
+    blocks: []
+  - name: failed_task_stops_build_not_valid
+    operation: execute_build
+    stage: build_execution
+    profile: build_failed
+    expect: {output_valid: true}  # typed output accepted; task criterion is not_valid and sync is not prepared
+    blocks: []
+# builder_unexpected_paths, builder_authoritative_repo_writes, and
+# builder_unauthorized_synchronization are scored once the Phase 2 safety
+# boundary exists; until then they remain not_run.

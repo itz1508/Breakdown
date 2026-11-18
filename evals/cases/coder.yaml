@@ -1,0 +1,8 @@
+role: coder
+cases:
+  - name: read_only_analysis_returns_file_evidence
+    operation: analyze_code
+    stage: findings_review
+    profile: valid_code_analysis
+    expect: {output_valid: true}
+    blocks: []

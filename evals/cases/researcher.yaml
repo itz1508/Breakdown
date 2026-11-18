@@ -1,0 +1,14 @@
+role: researcher
+cases:
+  - name: all_questions_addressed_with_provenance
+    operation: execute_research
+    stage: research_execution
+    profile: valid_research
+    expect: {output_valid: true}
+    blocks: [research_fabricated_sources]
+  - name: unaddressed_question_rejected
+    operation: execute_research
+    stage: research_execution
+    profile: research_missing_question
+    expect: {output_valid: false}
+    blocks: [research_fabricated_sources]

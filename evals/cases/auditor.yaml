@@ -1,0 +1,26 @@
+role: auditor
+cases:
+  - name: valid_proposal_preserves_intent
+    operation: create_research_proposal
+    stage: research_proposal
+    profile: valid_proposal
+    expect: {output_valid: true}
+    blocks: [auditor_invented_paths]
+  - name: uncertainty_without_research_question_rejected
+    operation: create_research_proposal
+    stage: research_proposal
+    profile: proposal_uncertainty_without_question
+    expect: {output_valid: false}
+    blocks: [auditor_invented_paths]
+  - name: findings_preserve_contradictions
+    operation: review_research_findings
+    stage: findings_review
+    profile: valid_findings
+    expect: {output_valid: true}
+    blocks: [research_hidden_contradictions]
+  - name: dropped_contradiction_rejected
+    operation: review_research_findings
+    stage: findings_review
+    profile: findings_drop_contradiction
+    expect: {output_valid: false}
+    blocks: [research_hidden_contradictions]

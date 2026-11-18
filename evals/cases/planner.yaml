@@ -1,0 +1,14 @@
+role: planner
+cases:
+  - name: cohesive_plan_accepted
+    operation: create_implementation_plan
+    stage: implementation_planning
+    profile: valid_plan
+    expect: {output_valid: true}
+    blocks: [planner_target_overlaps, planner_unresolved_capability_decisions]
+  - name: overlapping_targets_rejected
+    operation: create_implementation_plan
+    stage: implementation_planning
+    profile: plan_overlap
+    expect: {output_valid: false}
+    blocks: [planner_target_overlaps]
