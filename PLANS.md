@@ -166,6 +166,9 @@ remain intact; fix forward, never edit tests to force success.
 - G8 (low, fixed): AGENTS.md rule 5 scope clarified (workflow-execution agents vs
   repository maintenance).
 
+Gap-fix commit: `a177840` (gate re-verified at that revision: 89 tests, ruff clean,
+mypy strict clean, --check 8 aligned + coverage full, evals 11/11).
+
 ## Phase 2 Plan (proposed 2026-11-17, pending execution)
 
 Purpose: durable runtime — artifacts, runs, approvals, safety boundary, deterministic
