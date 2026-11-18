@@ -11,20 +11,27 @@ import pytest
 from pydantic import ValidationError
 
 from breakdown.contracts import (
+    RUNTIME_OWNED_KEYS,
     ContractActivationError,
     activate_decision_contract,
     activate_role_contract,
     build_contract_registry,
+    mapped_output_keys,
     validate_alignment,
 )
 from breakdown.engine import load_workflow
 from breakdown.models import (
     OPERATION_IO,
+    BuildExecutionOutput,
     ContractKind,
     CriterionResult,
     ExecutionResult,
     ExecutionStatus,
+    FindingsReviewOutput,
+    ImplementationPlanningOutput,
     InitialRequest,
+    ResearchExecutionOutput,
+    ResearchProposalOutput,
     RunRef,
     StageContext,
     UserDecision,
@@ -180,3 +187,152 @@ def test_retired_modules_absent() -> None:
     for retired in ("sdk_runner.py", "hooks.py"):
         assert not (package / retired).exists(), retired
     assert not (package / "mcp").exists()
+
+
+# --- F2: produces-coverage invariant and mapper drift guard ---
+
+
+def _plan_payload(expected: tuple[str, ...] = ("research_response",)) -> dict[str, Any]:
+    return {
+        "objective": "o",
+        "input_refs": ["research_proposal"],
+        "steps": ["s"],
+        "expected_output_keys": list(expected),
+        "completion_criteria": ["c"],
+        "evidence_required": ["e"],
+    }
+
+
+def _valid_output_instances() -> dict[str, Any]:
+    proposal = ResearchProposalOutput(
+        exact_user_intent="x",
+        candidate_requirements=(
+            {
+                "requirement_id": "r1",
+                "text": "t",
+                "origin": "user",
+                "coverage": "covered",
+                "evidence": "e",
+            },
+        ),
+        research_execution_processing_plan=_plan_payload(),
+    )
+    research = ResearchExecutionOutput(
+        research_record={
+            "record_id": "rr",
+            "resolved_questions": ({"question_id": "q1", "answer": "a", "evidence_refs": ("e1",)},),
+        },
+        report_summary="s",
+        research_todo={"items": ({"question_id": "q1", "status": "completed"},)},
+    )
+    findings = FindingsReviewOutput(
+        classified_findings=(
+            {
+                "finding_id": "f1",
+                "requirement_ref": "r1",
+                "claim": "c",
+                "status": "supported",
+                "decision_trace": ({"check": "k", "observation": "true"},),
+                "criterion": "valid",
+                "reason": "r",
+            },
+        ),
+        implementation_planning_processing_plan=_plan_payload(("implementation_plan",)),
+    )
+    planning = ImplementationPlanningOutput(
+        implementation_plan={
+            "plan_id": "p1",
+            "revision": 1,
+            "objective": "o",
+            "requirement_refs": ("r1",),
+            "source_checkpoint_ref": {"artifact_key": "source_checkpoint", "digest": "d" * 64},
+            "tasks": (
+                {
+                    "task_id": "t1",
+                    "sequence": 1,
+                    "responsibility": "resp",
+                    "requirement_refs": ("r1",),
+                    "target_paths": ({"path": "src/x.py", "disposition": "modify"},),
+                    "expected_result": "ok",
+                    "validation_steps": (
+                        {
+                            "step_id": "v1",
+                            "description": "d",
+                            "command_or_observation": "c",
+                            "expected": "e",
+                        },
+                    ),
+                    "required_evidence": ("ev",),
+                },
+            ),
+            "success_criteria": ({"criterion": "c"},),
+        },
+        planning_review_result={"cohesion": "valid"},
+        build_execution_processing_plan=_plan_payload(("task_results",)),
+    )
+    build = BuildExecutionOutput(
+        task_results=(
+            {
+                "task_id": "t1",
+                "sequence": 1,
+                "criterion": "valid",
+                "execution_result": "completed",
+                "expected": "ok",
+                "actual_observation": "ok",
+            },
+        ),
+    )
+    return {
+        "research_proposal": proposal,
+        "research_execution": research,
+        "findings_review": findings,
+        "implementation_planning": planning,
+        "build_execution": build,
+    }
+
+
+def test_produces_coverage_invariant(definition: Any) -> None:
+    """Every role-stage produces key is covered by a mapper, a declared
+    runtime step, or the runtime-owned registry — nothing is unproduced."""
+    for stage in definition.stages:
+        if stage.kind is not ContractKind.ROLE:
+            continue
+        step_outputs = {str(key) for step in stage.runtime_steps for key in step.get("outputs", [])}
+        covered = mapped_output_keys(stage.id) | step_outputs | set(RUNTIME_OWNED_KEYS)
+        uncovered = set(stage.produces) - covered
+        assert not uncovered, f"{stage.id}: uncovered produces keys {sorted(uncovered)}"
+
+
+def test_mapper_key_declarations_match_behavior(registry: Any) -> None:
+    """Declared mapper key sets cannot drift from actual mapper output."""
+    for stage_id, instance in _valid_output_instances().items():
+        contract = registry.get(stage_id)
+        assert contract.output_mapper is not None, stage_id
+        assert set(contract.output_mapper(instance)) == mapped_output_keys(stage_id), stage_id
+
+
+async def test_plan_coverage_validator_rejects_unknown_expected_keys(registry: Any) -> None:
+    contract = registry.get("research_proposal")
+    bad_plan = _plan_payload(("bogus_key_not_produced_by_destination",))
+
+    class _Role:
+        async def create_research_proposal(self, input_value: Any, context: Any) -> Any:
+            return {
+                "exact_user_intent": "x",
+                "candidate_requirements": [
+                    {
+                        "requirement_id": "r1",
+                        "text": "t",
+                        "origin": "user",
+                        "coverage": "covered",
+                        "evidence": "e",
+                    }
+                ],
+                "research_questions": [],
+                "candidate_source_responsibilities": [],
+                "research_execution_processing_plan": bad_plan,
+            }
+
+    payload = {"initial_request": {"text": "x", "created_at": utcnow().isoformat()}}
+    with pytest.raises(ContractActivationError):
+        await activate_role_contract(contract, payload, _context("research_proposal"), {"auditor": _Role()})

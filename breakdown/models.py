@@ -297,6 +297,9 @@ class ResearchProposalOutput(StrictModel):
     candidate_requirements: tuple[CandidateRequirement, ...] = Field(min_length=1)
     research_questions: tuple[ResearchQuestion, ...] = ()
     candidate_source_responsibilities: tuple[CandidateSourceResponsibility, ...] = ()
+    # Authored by the Auditor per breakdown.yaml creates_processing_plan
+    # (destination: research_execution); activated by runtime on approval.
+    research_execution_processing_plan: ProcessingPlan
 
 
 # --- Research execution (Researcher.execute_research) ---
@@ -373,6 +376,8 @@ class ResearchExecutionInput(StrictModel):
 class ResearchExecutionOutput(StrictModel):
     research_record: ResearchRecord
     report_summary: str = Field(min_length=1)
+    # Final snapshot of the question-tracking todo authored during execution.
+    research_todo: ResearchTodo
 
 
 # --- Findings review (Auditor.review_research_findings) ---
@@ -413,6 +418,9 @@ class FindingsReviewOutput(StrictModel):
     reviewed_fixture_specifications: tuple[FixtureSpecification, ...] = ()
     reviewed_unresolved_questions: tuple[UnresolvedQuestion, ...] = ()
     contradictions_preserved: tuple[Contradiction, ...] = ()
+    # Authored by the Auditor per breakdown.yaml creates_processing_plan
+    # (destination: implementation_planning); activated on stage completion.
+    implementation_planning_processing_plan: ProcessingPlan
 
 
 # --- Coder (read-only Auditor sub-role) ---
@@ -575,6 +583,10 @@ class ImplementationPlanningOutput(StrictModel):
     planning_gap_resolutions: tuple[str, ...] = ()
     implementation_plan: ImplementationPlan
     planning_review_result: PlanningReviewResult
+    # Authored by the Planner per breakdown.yaml creates_processing_plan
+    # (destination: build_execution); runtime activates it only when
+    # preflight_result.criterion_result == valid and plan approval lands.
+    build_execution_processing_plan: ProcessingPlan
 
 
 class FrozenPlan(StrictModel):

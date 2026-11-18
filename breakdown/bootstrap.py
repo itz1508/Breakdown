@@ -16,7 +16,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from breakdown.bindings import BackendBindingStore
+from breakdown.bindings import BackendBindingStore, validate_binding
 from breakdown.contracts import (
     CodingBackend,
     ContractRegistry,
@@ -72,6 +72,9 @@ def bootstrap(
 ) -> Application:
     definition = load_workflow(settings.workflow_path)
     bindings = BackendBindingStore.load(settings.backend_bindings_path)
+    # Fail fast: an invalid or stale binding record must never reach a role.
+    for binding in bindings.all():
+        validate_binding(binding)
     roles = build_role_registry(
         settings=settings,
         role_backend=role_backend,

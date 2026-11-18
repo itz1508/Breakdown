@@ -137,3 +137,60 @@ remain intact; fix forward, never edit tests to force success.
 - Lesson: PowerShell here-string appends via pasted terminal input can land late; verify
   file state by line count AND content boundaries before appending more (one duplicate
   block caught by ruff F811 and excised).
+
+### Gap review round 17 (post-Phase 1) — found and fixed
+
+- G1 (high, fixed): role-authored processing plans were missing from role outputs.
+  Definition declares creates_processing_plan.authored_by auditor/auditor/planner, but
+  the three output models carried no plan field. Fix: added
+  research_execution_processing_plan / implementation_planning_processing_plan /
+  build_execution_processing_plan to the three outputs, mappers emit them, and a
+  contract-layer semantic validator now proves each plan's expected_output_keys are a
+  subset of the destination stage's declared produces.
+- G2 (high, fixed): no produces-coverage invariant existed. Fix: research_todo added to
+  ResearchExecutionOutput (researcher work-product); RUNTIME_OWNED_KEYS registry in
+  contracts.py names the deterministic owner of every runtime-produced key;
+  test_produces_coverage_invariant + test_mapper_key_declarations_match_behavior pin it;
+  `--check` now reports "produces coverage: full" and exits 1 on any uncovered key.
+  The drift guard immediately caught one real omission (proposal mapper) during the fix.
+- G3 (med, fixed): tests/test_engine.py added — 13 rows: load errors (missing/invalid/
+  non-mapping/unknown key), cycle rejection, unproduced requires, non-contiguous orders,
+  5 loop-back violation rows, resolve_next matrix, CLI success + failure exit codes.
+- G4 (med, fixed): tests/test_bootstrap.py added — aligned Application, 4-role registry,
+  valid/invalid binding files, RoleToolkit allowlist denial rows.
+- G5 (med, fixed): bootstrap now runs validate_binding on every loaded binding
+  (fail fast; stale version raises BindingNotValid before any role is constructed).
+- G6 (low, fixed): dead conftest.make_task_payload removed.
+- G7 (low, tracked): decision activator emits {"decision": …} placeholder; durable
+  output_by_action records belong to Phase 2 approvals (P2-T5).
+- G8 (low, fixed): AGENTS.md rule 5 scope clarified (workflow-execution agents vs
+  repository maintenance).
+
+## Phase 2 Plan (proposed 2026-11-17, pending execution)
+
+Purpose: durable runtime — artifacts, runs, approvals, safety boundary, deterministic
+planning ops, full engine lifecycle — so a real request can travel all 8 stages to a
+synchronized, evidence-backed completion. Ports carry provenance from
+d:\breakdown\system\storage\ (inspect before porting).
+
+| Task | Files | Content | Named check |
+|---|---|---|---|
+| P2-T0 | breakdown/canonical.py | canonical JSON (sorted keys) + sha256; digest recipes per yaml digests block | known-answer vectors |
+| P2-T1 | breakdown/artifact_store.py | CAS under .breakdown/artifacts/, atomic writes, revisions, digest-verified reads | roundtrip + tamper rows |
+| P2-T2 | breakdown/events.py | append-only run event log; persistent/ephemeral split via WorkflowEvent.persistence | split rows |
+| P2-T3 | breakdown/run_store.py, checkpoint.py | RunState machine, attempts, resume points, definition pinning; source_checkpoint deterministic op | tmp-git-repo vectors |
+| P2-T4 | breakdown/safety.py | absorbs tool containment; sandbox lifecycle; independent changed-path detection; sync authorization/reconciliation | unlocks 3 not_run zeros |
+| P2-T5 | breakdown/approvals.py | durable decision activator emitting output_by_action keys; binding digests; approval_hash; timeouts; request_changes loop counter (max 3, invalidation, on_exhausted) | approve/decline/changes/timeout/loop rows |
+| P2-T6 | breakdown/planning_ops.py | freeze_plan + preflight_check implementing the 14 declared checks | valid+not_valid row per check |
+| P2-T7 | engine.py extension | start_run (pin+checkpoint), contract-driven stage loop, persistence, plan activation rules, budget enforcement (500k/200, reserve 50k, on_exceeded→completion failed budget_exhausted), recovery (max 2), cancellation, completion accepts matrix | e2e success/cancel/loop/budget/recovery |
+| P2-T8 | breakdown/reports.py | MD projections referencing JSON sources; record_completion op | source-ref rows |
+| P2-T9 | bootstrap + __main__ | stores under .breakdown/; backends only from validated bindings; CLI run/decide/resume/status | CLI smoke rows |
+| P2-T10 | evals expansion | score the 3 builder zeros via safety boundary; approval-staleness cases | all 8 zeros scored offline |
+
+Phase 2 gate: all existing tests stay green; new unit+e2e green; ruff/mypy clean;
+--check with coverage; evals score all 8 blocking zeros; one scripted e2e run reaches
+completion/success with approved paths synchronized only.
+
+🟧 ASSUMPTION: Phase 2 stays offline (fake backends); live SDK evaluation remains a
+separate binding milestone.
+

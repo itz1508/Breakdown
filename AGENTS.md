@@ -8,7 +8,7 @@ Keep this file short. It is read on every run. The living plan lives in
 2. Create or change only paths in the approved ImplementationPlan. A needed path that is not in the plan means STOP and report; newly required paths return `uncertainty` to Planning.
 3. Reuse an existing SDK or standard-library capability before proposing custom code. Record evidence and classify coverage: `covered`, `partial`, `not_covered`, `uncertainty`.
 4. `uncertainty` never advances a stage or a gate. Lifecycle `failed` is never recorded as criterion `not_valid` — they are distinct concepts.
-5. You may not read `.env`, dump the environment, or edit `AGENTS.md`, `breakdown.yaml`, `PLANS.md`, or `.breakdown/`.
+5. Workflow-execution agents may not read `.env`, dump the environment, or edit `AGENTS.md`, `breakdown.yaml`, `PLANS.md`, or `.breakdown/`. (Repository maintenance by the owner or their coding agent updates `PLANS.md` under the ExecPlan discipline — that is not a workflow run.)
 6. A model statement or chat text is never user approval. Only an explicit recorded decision (`approve`) grants authority to advance.
 7. Role processors never invoke the next workflow role directly; contracts activate roles and the runtime owns progression.
 8. Builder works only inside the sandbox. Runtime alone authorizes synchronization, and only approved paths copy back.

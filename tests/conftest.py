@@ -27,36 +27,6 @@ def utcnow() -> datetime:
     return datetime.now(UTC)
 
 
-def make_task_payload(
-    task_id: str = "task-1",
-    sequence: int = 1,
-    paths: tuple[str, ...] = ("src/calc.py",),
-    depends_on: tuple[str, ...] = (),
-) -> dict[str, Any]:
-    """A minimal valid BuildTask payload for tests and evals."""
-    return {
-        "task_id": task_id,
-        "sequence": sequence,
-        "responsibility": "add subtract function with test",
-        "requirement_refs": ["req-1"],
-        "target_paths": [{"path": path, "disposition": "modify"} for path in paths],
-        "source_evidence": ["finding-1"],
-        "capability_reuse": [],
-        "reference_ids": [],
-        "expected_result": "subtract(3, 2) == 1",
-        "validation_steps": [
-            {
-                "step_id": "v1",
-                "description": "run the demo test suite",
-                "command_or_observation": "pytest -q",
-                "expected": "all tests pass",
-            }
-        ],
-        "required_evidence": ["test output"],
-        "depends_on": list(depends_on),
-    }
-
-
 class FakeRoleBackend:
     """Scripted offline backend returning canned structured output per operation."""
 

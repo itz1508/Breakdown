@@ -38,6 +38,7 @@ from breakdown.models import (
     RoleBackendRequest,
     RoleBackendResponse,
     StageContext,
+    StageDefinition,
     StageResult,
     UserDecision,
     WorkflowDefinition,
@@ -192,6 +193,7 @@ def _research_proposal_outputs(output: ResearchProposalOutput) -> Mapping[str, A
         "research_questions": output.research_questions,
         "candidate_source_responsibilities": output.candidate_source_responsibilities,
         "research_proposal": output,
+        "research_execution_processing_plan": output.research_execution_processing_plan,
     }
 
 
@@ -199,6 +201,7 @@ def _research_execution_outputs(output: ResearchExecutionOutput) -> Mapping[str,
     record = output.research_record
     return {
         "research_response": record,
+        "research_todo": output.research_todo,
         "evidence_references": record.evidence,
         "fixture_specifications": record.fixture_specifications,
         "resolved_questions": record.resolved_questions,
@@ -213,6 +216,7 @@ def _findings_review_outputs(output: FindingsReviewOutput) -> Mapping[str, Any]:
         "reviewed_fixture_specifications": output.reviewed_fixture_specifications,
         "reviewed_unresolved_questions": output.reviewed_unresolved_questions,
         "findings_review": output,
+        "implementation_planning_processing_plan": output.implementation_planning_processing_plan,
     }
 
 
@@ -222,6 +226,7 @@ def _implementation_planning_outputs(output: ImplementationPlanningOutput) -> Ma
         "planning_gap_resolutions": output.planning_gap_resolutions,
         "implementation_plan": output.implementation_plan,
         "planning_review_result": output.planning_review_result,
+        "build_execution_processing_plan": output.build_execution_processing_plan,
     }
 
 
@@ -244,6 +249,84 @@ _OUTPUT_MAPPERS: Mapping[str, OutputMapper] = {
 }
 
 
+# Declared key sets of the mappers above. A contract test asserts each set
+# equals the keys actually produced by its mapper on a valid output instance,
+# so these declarations cannot drift from mapper behavior.
+_OUTPUT_MAPPING_KEYS: Mapping[str, frozenset[str]] = {
+    "research_proposal": frozenset(
+        {
+            "exact_user_intent",
+            "candidate_requirements",
+            "capability_coverage",
+            "research_questions",
+            "candidate_source_responsibilities",
+            "research_proposal",
+            "research_execution_processing_plan",
+        }
+    ),
+    "research_execution": frozenset(
+        {
+            "research_response",
+            "research_todo",
+            "evidence_references",
+            "fixture_specifications",
+            "resolved_questions",
+            "unresolved_questions",
+        }
+    ),
+    "findings_review": frozenset(
+        {
+            "classified_findings",
+            "normalized_evidence",
+            "reviewed_fixture_specifications",
+            "reviewed_unresolved_questions",
+            "findings_review",
+            "implementation_planning_processing_plan",
+        }
+    ),
+    "implementation_planning": frozenset(
+        {
+            "planning_gap_analysis",
+            "planning_gap_resolutions",
+            "implementation_plan",
+            "planning_review_result",
+            "build_execution_processing_plan",
+        }
+    ),
+    "build_execution": frozenset(
+        {
+            "task_results",
+            "applied_changes",
+            "validation_results",
+            "build_result",
+            "execution_evidence",
+        }
+    ),
+}
+
+
+def mapped_output_keys(stage_id: str) -> frozenset[str]:
+    """Declared mapper key set for a role stage (empty for non-role stages)."""
+    return _OUTPUT_MAPPING_KEYS.get(stage_id, frozenset())
+
+
+# Artifact keys produced by deterministic runtime operations — never by role
+# mappers: checkpoints, frozen packages, markdown projections, synchronization
+# records. Values name the owning deterministic mechanism.
+RUNTIME_OWNED_KEYS: Mapping[str, str] = {
+    "source_checkpoint": "deterministic checkpoint operation (Phase 2 checkpoint.py)",
+    "research_proposal_report": "markdown projection rendered by runtime from JSON records",
+    "research_request": "runtime bookkeeping derived from proposal + processing plan",
+    "research_report": "markdown projection rendered by runtime from JSON records",
+    "findings_review_report": "markdown projection rendered by runtime from JSON records",
+    "frozen_plan": "runtime step freeze_plan (implementation_planning.runtime_steps)",
+    "frozen_plan_hash": "runtime step freeze_plan (implementation_planning.runtime_steps)",
+    "preflight_result": "runtime step preflight_check (implementation_planning.runtime_steps)",
+    "synchronization_result": "runtime synchronization authorization (Phase 2 safety.py)",
+    "resulting_source_checkpoint": "deterministic post-sync checkpoint (Phase 2 checkpoint.py)",
+}
+
+
 @dataclass(frozen=True, slots=True)
 class ContractRegistry:
     contracts: Mapping[str, StageContract]
@@ -257,6 +340,24 @@ class ContractRegistry:
 
     def __len__(self) -> int:
         return len(self.contracts)
+
+
+def _plan_coverage_validator(plan_field: str, destination_stage: StageDefinition) -> SemanticValidator:
+    """An authored processing plan may only expect outputs the destination
+    stage is declared to produce (definition-derived; nothing redeclared)."""
+    allowed = frozenset(destination_stage.produces)
+
+    def _validate(output: BaseModel, context: StageContext) -> None:
+        plan = getattr(output, plan_field, None)
+        if plan is None:
+            raise ContractActivationError(f"authored processing plan field {plan_field!r} is missing")
+        unknown = set(plan.expected_output_keys) - allowed
+        if unknown:
+            raise ContractActivationError(
+                f"{plan_field}: expected_output_keys not produced by {destination_stage.id!r}: {sorted(unknown)}"
+            )
+
+    return _validate
 
 
 def build_contract_registry(
@@ -280,6 +381,22 @@ def build_contract_registry(
             if io is None:
                 raise ContractConfigurationError(f"no typed models registered for operation {stage.operation!r}")
             input_model, output_model = io
+            stage_validators = list(validators.get(stage.id, ()))
+            creates = stage.creates_processing_plan
+            if creates:
+                plan_name = creates.get("name")
+                destination_id = creates.get("destination_stage")
+                if not isinstance(plan_name, str) or not isinstance(destination_id, str):
+                    raise ContractConfigurationError(
+                        f"{stage.id}: creates_processing_plan must declare name and destination_stage"
+                    )
+                try:
+                    destination_stage = definition.get_stage(destination_id)
+                except KeyError as exc:
+                    raise ContractConfigurationError(
+                        f"{stage.id}: creates_processing_plan destination {destination_id!r} does not exist"
+                    ) from exc
+                stage_validators.append(_plan_coverage_validator(plan_name, destination_stage))
             contracts[stage.id] = StageContract(
                 stage_id=stage.id,
                 kind=kind,
@@ -289,7 +406,7 @@ def build_contract_registry(
                 produces=tuple(stage.produces),
                 input_model=input_model,
                 output_model=output_model,
-                semantic_validators=validators.get(stage.id, ()),
+                semantic_validators=tuple(stage_validators),
                 output_mapper=_OUTPUT_MAPPERS.get(stage.id),
             )
         elif kind is ContractKind.DECISION:

@@ -150,6 +150,22 @@ PROFILES: Mapping[str, Mapping[str, Any]] = {
         "candidate_source_responsibilities": [
             {"requirement_refs": ["req-1"], "purpose": "implement subtract", "path": "src/calc.py"}
         ],
+        "research_execution_processing_plan": {
+            "objective": "Answer the approved research questions",
+            "input_refs": ["research_proposal"],
+            "steps": [
+                "investigate each approved question",
+                "record evidence with provenance",
+            ],
+            "expected_output_keys": [
+                "research_response",
+                "evidence_references",
+                "resolved_questions",
+                "unresolved_questions",
+            ],
+            "completion_criteria": ["every approved question addressed"],
+            "evidence_required": ["provenance for material findings"],
+        },
     },
     "proposal_uncertainty_without_question": {
         "exact_user_intent": "Add a subtract function to src/calc.py with a test.",
@@ -164,6 +180,14 @@ PROFILES: Mapping[str, Mapping[str, Any]] = {
         ],
         "research_questions": [],
         "candidate_source_responsibilities": [],
+        "research_execution_processing_plan": {
+            "objective": "Answer the approved research questions",
+            "input_refs": ["research_proposal"],
+            "steps": ["investigate each approved question"],
+            "expected_output_keys": ["research_response"],
+            "completion_criteria": ["every approved question addressed"],
+            "evidence_required": ["provenance for material findings"],
+        },
     },
     "valid_research": {
         "research_record": {
@@ -188,6 +212,7 @@ PROFILES: Mapping[str, Mapping[str, Any]] = {
             "fixture_specifications": [],
         },
         "report_summary": "All approved questions addressed with provenance.",
+        "research_todo": {"items": [{"question_id": "q-1", "status": "completed"}]},
     },
     "research_missing_question": {
         "research_record": {
@@ -218,6 +243,14 @@ PROFILES: Mapping[str, Mapping[str, Any]] = {
         "contradictions_preserved": [
             {"topic": "naming", "positions": ["snake_case", "camelCase"], "evidence_refs": ["ev-1"]}
         ],
+        "implementation_planning_processing_plan": {
+            "objective": "Create the authoritative ImplementationPlan",
+            "input_refs": ["findings_review"],
+            "steps": ["analyze planning gaps", "produce cohesive ordered build tasks"],
+            "expected_output_keys": ["implementation_plan", "planning_review_result"],
+            "completion_criteria": ["all requirements traced", "all tasks cohesive"],
+            "evidence_required": ["reuse decisions with evidence"],
+        },
     },
     "findings_drop_contradiction": {
         "classified_findings": [
@@ -235,6 +268,14 @@ PROFILES: Mapping[str, Mapping[str, Any]] = {
         "reviewed_fixture_specifications": [],
         "reviewed_unresolved_questions": [],
         "contradictions_preserved": [],
+        "implementation_planning_processing_plan": {
+            "objective": "Create the authoritative ImplementationPlan",
+            "input_refs": ["findings_review"],
+            "steps": ["analyze planning gaps", "produce cohesive ordered build tasks"],
+            "expected_output_keys": ["implementation_plan", "planning_review_result"],
+            "completion_criteria": ["all requirements traced", "all tasks cohesive"],
+            "evidence_required": ["reuse decisions with evidence"],
+        },
     },
 }
 
@@ -278,6 +319,14 @@ PLAN_PROFILE: Mapping[str, Any] = {
         "success_criteria": [{"criterion": "subtract works and is tested", "measurable": True}],
     },
     "planning_review_result": {"cohesion": "valid", "notes": ""},
+    "build_execution_processing_plan": {
+        "objective": "Execute the approved BuildTasks in the sandbox",
+        "input_refs": ["implementation_plan", "plan_approval_record"],
+        "steps": ["apply each approved task sequentially", "validate against expected results"],
+        "expected_output_keys": ["task_results", "validation_results", "build_result"],
+        "completion_criteria": ["all tasks evidence-backed"],
+        "evidence_required": ["check observations per task"],
+    },
 }
 
 CODE_ANALYSIS_PROFILE: Mapping[str, Any] = {

@@ -81,6 +81,22 @@ PROPOSAL_PAYLOAD: dict[str, Any] = {
     ],
     "research_questions": [{"question_id": "q-1", "text": "test conventions?", "reason": "scope"}],
     "candidate_source_responsibilities": [],
+    "research_execution_processing_plan": {
+        "objective": "Answer the approved research questions",
+        "input_refs": ["research_proposal"],
+        "steps": [
+            "investigate each approved question",
+            "record evidence with provenance",
+        ],
+        "expected_output_keys": [
+            "research_response",
+            "evidence_references",
+            "resolved_questions",
+            "unresolved_questions",
+        ],
+        "completion_criteria": ["every approved question addressed"],
+        "evidence_required": ["provenance for material findings"],
+    },
 }
 
 RESEARCH_PAYLOAD: dict[str, Any] = {
@@ -102,6 +118,7 @@ RESEARCH_PAYLOAD: dict[str, Any] = {
         "fixture_specifications": [],
     },
     "report_summary": "addressed",
+    "research_todo": {"items": [{"question_id": "q-1", "status": "completed"}]},
 }
 
 FINDINGS_PAYLOAD: dict[str, Any] = {
@@ -122,6 +139,14 @@ FINDINGS_PAYLOAD: dict[str, Any] = {
     "contradictions_preserved": [
         {"topic": "naming", "positions": ["snake_case", "camelCase"], "evidence_refs": ["ev-1"]}
     ],
+    "implementation_planning_processing_plan": {
+        "objective": "Create the authoritative ImplementationPlan",
+        "input_refs": ["findings_review"],
+        "steps": ["analyze planning gaps", "produce cohesive ordered build tasks"],
+        "expected_output_keys": ["implementation_plan", "planning_review_result"],
+        "completion_criteria": ["all requirements traced", "all tasks cohesive"],
+        "evidence_required": ["reuse decisions with evidence"],
+    },
 }
 
 PLAN_PAYLOAD: dict[str, Any] = {
@@ -163,6 +188,14 @@ PLAN_PAYLOAD: dict[str, Any] = {
         "success_criteria": [{"criterion": "subtract tested", "measurable": True}],
     },
     "planning_review_result": {"cohesion": "valid", "notes": ""},
+    "build_execution_processing_plan": {
+        "objective": "Execute the approved BuildTasks in the sandbox",
+        "input_refs": ["implementation_plan", "plan_approval_record"],
+        "steps": ["apply each approved task sequentially", "validate against expected results"],
+        "expected_output_keys": ["task_results", "validation_results", "build_result"],
+        "completion_criteria": ["all tasks evidence-backed"],
+        "evidence_required": ["check observations per task"],
+    },
 }
 
 
@@ -214,6 +247,14 @@ async def test_auditor_rejects_uncertainty_without_question(fake_role_backend: A
         ],
         "research_questions": [],
         "candidate_source_responsibilities": [],
+        "research_execution_processing_plan": {
+            "objective": "Answer the approved research questions",
+            "input_refs": ["research_proposal"],
+            "steps": ["investigate each approved question"],
+            "expected_output_keys": ["research_response"],
+            "completion_criteria": ["every approved question addressed"],
+            "evidence_required": ["provenance for material findings"],
+        },
     }
     fake_role_backend.set_output("create_research_proposal", bad)
     auditor = Auditor(backend=fake_role_backend, tools=RoleToolkit(role="auditor", root=target_repo))

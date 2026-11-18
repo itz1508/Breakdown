@@ -11,9 +11,15 @@ import argparse
 import sys
 from pathlib import Path
 
-from breakdown.contracts import ContractConfigurationError, build_contract_registry, validate_alignment
+from breakdown.contracts import (
+    RUNTIME_OWNED_KEYS,
+    ContractConfigurationError,
+    build_contract_registry,
+    mapped_output_keys,
+    validate_alignment,
+)
 from breakdown.engine import WorkflowDefinitionError, load_workflow
-from breakdown.models import Settings
+from breakdown.models import ContractKind, Settings
 
 
 def _run_check(settings: Settings) -> int:
@@ -32,7 +38,21 @@ def _run_check(settings: Settings) -> int:
             f"  {stage.order}. {stage.id} [{stage.kind.value}] "
             f"owner={stage.owner} operation={stage.operation} contract=aligned"
         )
+    uncovered_total = 0
+    for stage in definition.stages:
+        if stage.kind is not ContractKind.ROLE:
+            continue
+        step_outputs = {str(key) for step in stage.runtime_steps for key in step.get("outputs", [])}
+        covered = mapped_output_keys(stage.id) | step_outputs | set(RUNTIME_OWNED_KEYS)
+        uncovered = sorted(set(stage.produces) - covered)
+        if uncovered:
+            uncovered_total += len(uncovered)
+            print(f"  coverage: {stage.id} UNCOVERED {uncovered}")
     print(f"contracts: {len(registry)} aligned, 0 mismatches")
+    if uncovered_total:
+        print(f"produces coverage: {uncovered_total} uncovered keys")
+        return 1
+    print("produces coverage: full (mappers + runtime steps + runtime-owned keys)")
     return 0
 
 
