@@ -15,7 +15,7 @@ from breakdown.models import (
     RoleBackendRequest,
     StageContext,
 )
-from breakdown.roles import RoleToolkit, render_json, structured_or_raise
+from breakdown.roles import RoleToolkit, generate_structured, render_json
 
 _CODER_BRIEF = (
     "You are the Coder, a read-only analysis sub-role. Answer only bounded "
@@ -44,5 +44,4 @@ class Coder:
             output_schema=CodeAnalysisEvidence.model_json_schema(),
             tool_names=self._tools.allowed_names(),
         )
-        response = await self._backend.generate(request)
-        return structured_or_raise(response.structured_output, CodeAnalysisEvidence, "analyze_code")
+        return await generate_structured(self, self._backend, request, CodeAnalysisEvidence)

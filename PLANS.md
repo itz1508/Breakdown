@@ -248,6 +248,28 @@ separate binding milestone.
   entry events now emitted exactly once per stage entry (7 per full run, pinned by test).
   Validation points hooked: 7/8 (budget point lands with T7b); observability events: 8/9
   (cost_threshold_approached lands with T7b).
-- [ ] P2-T7b budget/recovery/timeout/uncertainty routing
+- [x] (2026-11-18) P2-T7b budget/recovery/timeout/uncertainty routing — engine enforces
+  cost_budget from the pinned definition: per-stage default_max_tokens, workflow max_tokens /
+  max_tool_calls, completion_reserve (checked before every role stage and after every
+  activation), on_exceeded → completion/failed reason budget_exhausted with
+  budget_exhausted_record + failure_record + retained_evidence preserved; 80% threshold
+  emits cost_threshold_approached (9/9 observability events, 8/8 validation points).
+  stage.on_failure runtime_recovery retries in place up to max_recovery_attempts (durable
+  per-attempt commits, resume_point recorded); build/completion route straight to
+  completion/failed. timeout_seconds wraps activation via asyncio.wait_for
+  (error_type timeout). D27 uncertainty routing: build task uncertainty takes the loopback
+  edge (sandbox torn down, synchronization prohibited, replanning + NEW plan approval
+  required); non-build uncertainty routes completion/failed without recovery.
+  Cycle-2 fixes: (1) approved_plan_revision stored the artifact-store revision instead of
+  the ImplementationPlan model revision — builder revision check broke on replanning; now
+  model revision. (2) roles surface backend usage via generate_structured helper
+  (role.last_usage) so the engine can accumulate budget.
+  🟨 PROPOSAL (guardrail): build→plan loopback bounded at 3 build attempts
+  (_MAX_BUILD_ATTEMPTS) — yaml declares the edge but no cap; unbounded looping violates
+  recovery discipline. (3) known limitation: coding-backend (builder) usage is not counted
+  toward the budget — CodingBackendResult carries no usage field; role-backend usage only.
+  10 new test rows (per-stage cap, reserve + threshold event, workflow max tokens,
+  tool-call cap, budget boundaries, recovery retry/exhaustion, timeout exhaustion,
+  loopback-then-success, build not_valid).
 - [ ] P2-T8 reports + completion polish · P2-T9 bootstrap/CLI · P2-T10 evals expansion (Gate C)
 

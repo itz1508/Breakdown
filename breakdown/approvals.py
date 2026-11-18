@@ -25,6 +25,7 @@ from breakdown.models import (
     ContractKind,
     EventType,
     FrozenPlan,
+    ImplementationPlan,
     PendingDecision,
     PlanApprovalRecord,
     ResearchApprovalRecord,
@@ -312,11 +313,12 @@ class ApprovalManager:
         plan_ref = record.produced_artifacts.get("implementation_plan")
         if plan_ref is None:
             raise ApprovalError("implementation_plan has not been produced")
+        plan = self.artifacts.get_model(ImplementationPlan, plan_ref.artifact_key, plan_ref.revision)
         approval_record = PlanApprovalRecord(
             decision=decision,
             frozen_plan_ref=frozen_ref,
             frozen_plan_hash=frozen.frozen_plan_hash,
-            implementation_plan_revision=plan_ref.revision,
+            implementation_plan_revision=plan.revision,
             build_execution_processing_plan_ref=pending.binding_refs["build_execution_processing_plan"],
             build_execution_processing_plan_digest=pending.binding_digests["build_execution_processing_plan"],
             source_checkpoint_ref=pending.binding_refs["source_checkpoint"],
@@ -333,7 +335,7 @@ class ApprovalManager:
                 approval_record, "plan_approval_record", contract_id="plan_approval", contract_version=version
             )
             produced["approved_plan_revision"] = self.artifacts.store_artifact(
-                StoredValue(value=plan_ref.revision),
+                StoredValue(value=plan.revision),
                 "approved_plan_revision",
                 contract_id="plan_approval",
                 contract_version=version,

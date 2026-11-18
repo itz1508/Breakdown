@@ -16,7 +16,7 @@ from breakdown.models import (
     RoleBackendRequest,
     StageContext,
 )
-from breakdown.roles import RoleOperationError, RoleToolkit, render_json, structured_or_raise
+from breakdown.roles import RoleOperationError, RoleToolkit, generate_structured, render_json
 
 _RESEARCHER_BRIEF = (
     "You are the Researcher. Investigate only the approved research questions. "
@@ -48,8 +48,7 @@ class Researcher:
             output_schema=ResearchExecutionOutput.model_json_schema(),
             tool_names=self._tools.allowed_names(),
         )
-        response = await self._backend.generate(request)
-        output = structured_or_raise(response.structured_output, ResearchExecutionOutput, "execute_research")
+        output = await generate_structured(self, self._backend, request, ResearchExecutionOutput)
         _validate_coverage(output, input_value)
         return output
 

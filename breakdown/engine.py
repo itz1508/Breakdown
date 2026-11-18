@@ -69,8 +69,10 @@ from breakdown.models import (
     RunState,
     SourceCheckpoint,
     StageContext,
+    StageResult,
     StoredValue,
     SynchronizationResult,
+    TokenUsage,
     UnresolvedQuestion,
     WorkflowDefinition,
 )
@@ -314,6 +316,12 @@ class WorkflowEngine:
                 # Forward arrival at completion (only possible from build_execution)
                 # means success; failure/cancel routes set terminal_outcome explicitly.
                 return self._complete_run(run_id, record.terminal_outcome or "success", record.reason)
+            violation = self._budget_violation(record.tokens_used, record.tool_calls_used)
+            if violation is not None:
+                # cost_budget.on_exceeded: never start another stage once the budget
+                # (or the completion reserve) is exhausted.
+                self._route_budget_exhausted(run_id, revision, record, stage_id, violation)
+                continue
             self.stores.events.emit(
                 EventType.STAGE_ENTERED,
                 run_id=run_id,
@@ -343,13 +351,58 @@ class WorkflowEngine:
             stage_id=stage_id,
             attempt=attempt,
         )
+        stage = self.definition.get_stage(stage_id)
+        tokens_before = record.tokens_used
         try:
-            result = asyncio.run(activate_role_contract(contract, input_value, context, roles))
+            result = self._activate_with_timeout(contract, input_value, context, roles, stage.timeout_seconds)
+        except TimeoutError:
+            self._handle_stage_failure(
+                run_id,
+                revision,
+                record,
+                stage_id,
+                f"stage timed out after {stage.timeout_seconds}s",
+                error_type="timeout",
+                attempt=attempt,
+            )
+            return
         except ContractActivationError as exc:
-            self._route_failed(run_id, revision, record, stage_id, f"activation failed: {exc}")
+            self._handle_stage_failure(run_id, revision, record, stage_id, f"activation failed: {exc}", attempt=attempt)
+            return
+        except Exception as exc:  # role lifecycle failure (backend/operation errors)
+            self._handle_stage_failure(
+                run_id, revision, record, stage_id, f"stage execution failed: {exc}", attempt=attempt
+            )
+            return
+        role_obj = roles.get(contract.owner)
+        usage = getattr(role_obj, "last_usage", None) if role_obj is not None else None
+        tokens_used = record.tokens_used + (usage.input_tokens + usage.output_tokens if usage is not None else 0)
+        tool_calls_used = record.tool_calls_used + (usage.tool_calls if usage is not None else 0)
+        self._maybe_emit_cost_threshold(run_id, stage_id, tokens_before, tokens_used)
+        if result.criterion is CriterionResult.UNCERTAINTY and stage_id != "build_execution":
+            # D27: uncertainty outside build routes to completion/failed without recovery.
+            self._handle_stage_failure(
+                run_id,
+                revision,
+                record,
+                stage_id,
+                result.reason or "uncertainty unresolved",
+                error_type="uncertainty",
+                allow_recovery=False,
+                attempt=attempt,
+                usage=(tokens_used, tool_calls_used),
+            )
             return
         if result.criterion is not CriterionResult.VALID:
-            self._route_failed(run_id, revision, record, stage_id, result.reason or "stage criterion not valid")
+            self._handle_stage_failure(
+                run_id,
+                revision,
+                record,
+                stage_id,
+                result.reason or "stage criterion not valid",
+                attempt=attempt,
+                usage=(tokens_used, tool_calls_used),
+            )
             return
         produced = dict(record.produced_artifacts)
         for key, value in result.produces.items():
@@ -362,34 +415,54 @@ class WorkflowEngine:
                 stage_id=stage_id,
                 payload={"artifact_key": key, "revision": ref.revision},
             )
+        attempts = dict(record.stage_attempts)
+        attempts[stage_id] = attempt
+        usage_totals = (tokens_used, tool_calls_used)
         failure_reason: str | None = None
-        if stage_id == "implementation_planning":
+        if stage_id == "build_execution":
+            build_output = result.produces.get("build_result")
+            criteria = (
+                {task_result.criterion for task_result in build_output.task_results}
+                if isinstance(build_output, BuildExecutionOutput)
+                else set()
+            )
+            if CriterionResult.UNCERTAINTY in criteria:
+                # Loopback edge: newly required path or plan contradiction.
+                self._loop_back_for_replanning(run_id, revision, record, produced, attempt, usage_totals)
+                return
+            if CriterionResult.NOT_VALID in criteria:
+                failure_reason = "build task returned not_valid"
+        if failure_reason is None:
+            budget_detail = self._budget_violation(tokens_used, tool_calls_used) or self._stage_cap_violation(
+                stage_id, usage
+            )
+            if budget_detail is not None:
+                self._route_budget_exhausted(
+                    run_id,
+                    revision,
+                    record,
+                    stage_id,
+                    budget_detail,
+                    produced=produced,
+                    attempts=attempts,
+                    usage=usage_totals,
+                )
+                return
+        if stage_id == "implementation_planning" and failure_reason is None:
             failure_reason = self._freeze_and_preflight(run_id, stage_id, produced)
         if stage_id == "build_execution" and failure_reason is None:
             assert approved_checkpoint is not None
             failure_reason = self._post_build(run_id, produced, approved_checkpoint)
-        attempts = dict(record.stage_attempts)
-        attempts[stage_id] = attempt
         if failure_reason is not None:
-            failure = FailureRecord(
-                stage_id=stage_id, error_type="stage_failed", evidence=failure_reason, occurred_at=_utcnow()
-            )
-            produced["failure_record"] = self._store("failure_record", failure, stage_id)
-            produced["retained_evidence"] = self._retained_evidence_ref(record, produced)
-            self.stores.events.emit(EventType.STAGE_FAILED, run_id=run_id, stage_id=stage_id)
-            self.stores.runs.update_run(
-                record.model_copy(
-                    update={
-                        "state": RunState.RUNNING,
-                        "current_stage": "completion",
-                        "terminal_outcome": "failed",
-                        "reason": failure_reason,
-                        "produced_artifacts": produced,
-                        "stage_attempts": attempts,
-                        "resume_point": stage_id,
-                    }
-                ),
-                expected_revision=revision,
+            self._handle_stage_failure(
+                run_id,
+                revision,
+                record,
+                stage_id,
+                failure_reason,
+                attempt=attempt,
+                produced=produced,
+                usage=usage_totals,
             )
             return
         self.stores.events.emit(EventType.STAGE_COMPLETED, run_id=run_id, stage_id=stage_id)
@@ -403,6 +476,8 @@ class WorkflowEngine:
                     "current_stage": next_stage,
                     "produced_artifacts": produced,
                     "stage_attempts": attempts,
+                    "tokens_used": tokens_used,
+                    "tool_calls_used": tool_calls_used,
                 }
             ),
             expected_revision=revision,
@@ -564,6 +639,148 @@ class WorkflowEngine:
         self.stores.safety.teardown_sandbox(run_id)
         return None
 
+    def _budget_limits(self) -> tuple[int, int, int]:
+        """cost_budget numbers, derived from the pinned definition (never redeclared)."""
+        budget = self.definition.cost_budget
+        workflow = budget.get("per_workflow") or {}
+        stage_budget = budget.get("per_stage") or {}
+        max_tokens = int(workflow.get("max_tokens") or 0)
+        max_calls = int(workflow.get("max_tool_calls") or 0)
+        reserve = int(stage_budget.get("completion_reserve") or 0)
+        return max_tokens, max_calls, reserve
+
+    def _budget_violation(self, tokens_used: int, tool_calls_used: int) -> str | None:
+        max_tokens, max_calls, reserve = self._budget_limits()
+        if max_tokens and tokens_used > max_tokens:
+            return f"tokens used {tokens_used} exceed workflow max_tokens {max_tokens}"
+        if max_calls and tool_calls_used > max_calls:
+            return f"tool calls used {tool_calls_used} exceed workflow max_tool_calls {max_calls}"
+        if max_tokens and reserve and (max_tokens - tokens_used) < reserve:
+            return f"remaining budget {max_tokens - tokens_used} below completion_reserve {reserve}"
+        return None
+
+    def _stage_cap_violation(self, stage_id: str, usage: TokenUsage | None) -> str | None:
+        stage_cap = int((self.definition.cost_budget.get("per_stage") or {}).get("default_max_tokens") or 0)
+        if stage_cap and usage is not None and (usage.input_tokens + usage.output_tokens) > stage_cap:
+            used = usage.input_tokens + usage.output_tokens
+            return f"stage {stage_id} activation used {used} tokens; per-stage cap {stage_cap}"
+        return None
+
+    def _maybe_emit_cost_threshold(self, run_id: str, stage_id: str, before_tokens: int, after_tokens: int) -> None:
+        max_tokens, _, _ = self._budget_limits()
+        if not max_tokens:
+            return
+        threshold = (max_tokens * 4) // 5
+        if before_tokens < threshold <= after_tokens:
+            self.stores.events.emit(
+                EventType.COST_THRESHOLD_APPROACHED,
+                run_id=run_id,
+                stage_id=stage_id,
+                payload={"threshold": threshold, "tokens_used": after_tokens, "max_tokens": max_tokens},
+            )
+
+    def _route_budget_exhausted(
+        self,
+        run_id: str,
+        revision: int,
+        record: RunRecord,
+        stage_id: str,
+        detail: str,
+        *,
+        produced: Mapping[str, ArtifactRef] | None = None,
+        attempts: Mapping[str, int] | None = None,
+        usage: tuple[int, int] | None = None,
+    ) -> None:
+        """cost_budget.on_exceeded: route completion, terminal_outcome failed,
+        reason budget_exhausted; artifacts produced so far are preserved."""
+        tokens_used, tool_calls_used = usage if usage is not None else (record.tokens_used, record.tool_calls_used)
+        merged = dict(record.produced_artifacts)
+        if produced:
+            merged.update(produced)
+        failure = FailureRecord(
+            stage_id=stage_id, error_type="budget_exhausted", evidence=detail, occurred_at=_utcnow()
+        )
+        merged["failure_record"] = self._store("failure_record", failure, stage_id)
+        merged["budget_exhausted_record"] = self._store(
+            "budget_exhausted_record",
+            StoredValue(value={"detail": detail, "tokens_used": tokens_used, "tool_calls_used": tool_calls_used}),
+            stage_id,
+        )
+        merged["retained_evidence"] = self._retained_evidence_ref(record, merged)
+        self.stores.events.emit(
+            EventType.STAGE_FAILED,
+            run_id=run_id,
+            stage_id=stage_id,
+            payload={"reason": "budget_exhausted", "detail": detail},
+        )
+        update: dict[str, Any] = {
+            "state": RunState.RUNNING,
+            "current_stage": "completion",
+            "terminal_outcome": "failed",
+            "reason": "budget_exhausted",
+            "produced_artifacts": merged,
+            "resume_point": stage_id,
+            "tokens_used": tokens_used,
+            "tool_calls_used": tool_calls_used,
+        }
+        if attempts is not None:
+            update["stage_attempts"] = dict(attempts)
+        self.stores.runs.update_run(record.model_copy(update=update), expected_revision=revision)
+
+    _MAX_BUILD_ATTEMPTS = 3  # runtime guardrail: the build->plan loopback edge is bounded
+
+    def _loop_back_for_replanning(
+        self,
+        run_id: str,
+        revision: int,
+        record: RunRecord,
+        produced: Mapping[str, ArtifactRef],
+        attempt: int,
+        usage: tuple[int, int],
+    ) -> None:
+        """build_execution loopback edge (newly_required_path_or_plan_contradiction):
+        uncertainty returns to implementation_planning; synchronization is prohibited,
+        the sandbox is torn down, and the revised plan requires a new approval."""
+        self.stores.safety.teardown_sandbox(run_id)
+        tokens_used, tool_calls_used = usage
+        attempts = dict(record.stage_attempts)
+        attempts["build_execution"] = attempt
+        if attempt >= self._MAX_BUILD_ATTEMPTS:
+            self._handle_stage_failure(
+                run_id,
+                revision,
+                record,
+                "build_execution",
+                "build uncertainty persisted beyond the loopback limit",
+                attempt=attempt,
+                error_type="uncertainty",
+                allow_recovery=False,
+                produced=dict(produced),
+                usage=usage,
+            )
+            return
+        self.stores.events.emit(
+            EventType.STAGE_FAILED,
+            run_id=run_id,
+            stage_id="build_execution",
+            payload={"loopback": "implementation_planning", "attempt": attempt},
+        )
+        self.stores.runs.update_run(
+            record.model_copy(
+                update={
+                    "state": RunState.RUNNING,
+                    "current_stage": "implementation_planning",
+                    "produced_artifacts": dict(produced),
+                    "stage_attempts": attempts,
+                    "resume_point": "implementation_planning",
+                    "reason": "build returned uncertainty; replanning and new approval required",
+                    "tokens_used": tokens_used,
+                    "tool_calls_used": tool_calls_used,
+                }
+            ),
+            expected_revision=revision,
+        )
+
     def _retained_evidence_ref(self, record: RunRecord, produced: Mapping[str, ArtifactRef]) -> ArtifactRef:
         """Retained evidence for terminal routing: refs produced so far (completion accepts requirement)."""
         merged = dict(record.produced_artifacts)
@@ -574,14 +791,82 @@ class WorkflowEngine:
         ]
         return self._store("retained_evidence", StoredValue(value=value), "runtime")
 
-    def _route_failed(self, run_id: str, revision: int, record: RunRecord, stage_id: str, reason: str) -> None:
-        """T7a failure route: persist a FailureRecord and head to completion/failed.
-        (T7b inserts the recovery-attempt policy before routing.)"""
-        failure = FailureRecord(stage_id=stage_id, error_type="stage_failed", evidence=reason, occurred_at=_utcnow())
-        produced = dict(record.produced_artifacts)
-        produced["failure_record"] = self._store("failure_record", failure, stage_id)
-        produced["retained_evidence"] = self._retained_evidence_ref(record, produced)
-        self.stores.events.emit(EventType.STAGE_FAILED, run_id=run_id, stage_id=stage_id)
+    @staticmethod
+    def _activate_with_timeout(
+        contract: StageContract,
+        input_value: BaseModel,
+        context: StageContext,
+        roles: Mapping[str, Any],
+        timeout_seconds: int | None,
+    ) -> StageResult:
+        """Contract activation bounded by the stage's declared timeout_seconds."""
+        coro = activate_role_contract(contract, input_value, context, roles)
+        if timeout_seconds is None:
+            return asyncio.run(coro)
+
+        async def _bounded() -> StageResult:
+            return await asyncio.wait_for(coro, timeout=float(timeout_seconds))
+
+        return asyncio.run(_bounded())
+
+    def _handle_stage_failure(
+        self,
+        run_id: str,
+        revision: int,
+        record: RunRecord,
+        stage_id: str,
+        reason: str,
+        *,
+        attempt: int,
+        error_type: str = "stage_failed",
+        allow_recovery: bool = True,
+        produced: Mapping[str, ArtifactRef] | None = None,
+        usage: tuple[int, int] | None = None,
+    ) -> None:
+        """stage.on_failure routing: a recoverable stage retries in place until
+        max_recovery_attempts is exhausted; any other failure routes to
+        completion/failed with failure_record + retained_evidence (completion accepts)."""
+        tokens_used, tool_calls_used = usage if usage is not None else (record.tokens_used, record.tool_calls_used)
+        merged = dict(record.produced_artifacts)
+        if produced:
+            merged.update(produced)
+        attempts = dict(record.stage_attempts)
+        attempts[stage_id] = attempt
+        on_failure = self.definition.get_stage(stage_id).on_failure or {}
+        route = str(on_failure.get("route", "completion"))
+        max_recovery = int(on_failure.get("max_recovery_attempts", 0))
+        if allow_recovery and route == "runtime_recovery" and attempt <= max_recovery:
+            self.stores.events.emit(
+                EventType.STAGE_FAILED,
+                run_id=run_id,
+                stage_id=stage_id,
+                payload={"recovery": "retry", "attempt": attempt, "reason": reason},
+            )
+            self.stores.runs.update_run(
+                record.model_copy(
+                    update={
+                        "state": RunState.RUNNING,
+                        "current_stage": stage_id,
+                        "produced_artifacts": merged,
+                        "stage_attempts": attempts,
+                        "resume_point": str(on_failure.get("resume_at", stage_id)),
+                        "reason": f"recovery scheduled: {reason}",
+                        "tokens_used": tokens_used,
+                        "tool_calls_used": tool_calls_used,
+                    }
+                ),
+                expected_revision=revision,
+            )
+            return
+        failure = FailureRecord(stage_id=stage_id, error_type=error_type, evidence=reason, occurred_at=_utcnow())
+        merged["failure_record"] = self._store("failure_record", failure, stage_id)
+        merged["retained_evidence"] = self._retained_evidence_ref(record, merged)
+        self.stores.events.emit(
+            EventType.STAGE_FAILED,
+            run_id=run_id,
+            stage_id=stage_id,
+            payload={"recovery": "none", "reason": reason},
+        )
         self.stores.runs.update_run(
             record.model_copy(
                 update={
@@ -589,8 +874,11 @@ class WorkflowEngine:
                     "current_stage": "completion",
                     "terminal_outcome": "failed",
                     "reason": reason,
-                    "produced_artifacts": produced,
+                    "produced_artifacts": merged,
+                    "stage_attempts": attempts,
                     "resume_point": stage_id,
+                    "tokens_used": tokens_used,
+                    "tool_calls_used": tool_calls_used,
                 }
             ),
             expected_revision=revision,

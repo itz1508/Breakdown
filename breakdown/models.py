@@ -224,6 +224,8 @@ class StageResult(StrictModel):
     criterion: CriterionResult
     produces: Mapping[str, Any] = Field(default_factory=dict)
     reason: str = ""
+    # Backend-reported usage for budget enforcement (runtime accumulates it).
+    usage: TokenUsage | None = None
 
     @classmethod
     def valid(cls, stage_id: str, produces: Mapping[str, Any]) -> StageResult:

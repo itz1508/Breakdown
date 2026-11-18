@@ -51,6 +51,15 @@ def structured_or_raise(raw: Mapping[str, Any] | None, model: type[T], operation
         raise RoleOperationError(f"backend output rejected by {model.__name__}: {exc}") from exc
 
 
+async def generate_structured(role: Any, backend: Any, request: Any, model: type[T]) -> T:
+    """One SDK round-trip on the role's native chain: generate, capture the
+    backend-reported usage on the role (runtime budget enforcement reads it),
+    and validate the structured output against the authoritative model."""
+    response = await backend.generate(request)
+    role.last_usage = response.usage
+    return structured_or_raise(response.structured_output, model, request.operation)
+
+
 def render_json(value: Any, limit: int = 50_000) -> str:
     """Deterministic prompt rendering for backend inputs."""
     if isinstance(value, BaseModel):
