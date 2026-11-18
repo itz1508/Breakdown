@@ -40,7 +40,7 @@ Phases:
 - [x] (2026-11-17) `python -m breakdown --check`: 8 stages ↔ 8 contracts aligned, 0 mismatches
 - [x] (2026-11-17) Task 9 (rest): test_contracts/test_tools/test_roles/test_bindings written; full gate green
 - [x] (2026-11-17) Phase 1 gate PASSED: pytest 64 passed · ruff check clean · ruff format 30 files clean · mypy strict 14 files 0 issues · `python -m breakdown --check` 8↔8 aligned · evals 11/11, 5 scored zeros at 0 violations, 3 zeros not_run (Phase 2 safety boundary)
-- [x] (2026-11-17) First commit after gate
+- [x] (2026-11-17) First commit after gate: `ba9d0e1` on `main` — 41 files, working tree clean
 
 ## Surprises & Discoveries
 
