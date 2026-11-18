@@ -60,6 +60,7 @@ Phases:
 - Decision: Python >=3.11. Rationale: installed interpreter 3.11.15; D3 default not vetoed. Date/Author: 2026-11-17.
 - Decision: backend protocols live in contracts.py; roles import only models/contracts/tools; fakes in tests. Rationale: H4/H14 gap fixes; role-independence boundary rule. Date/Author: 2026-11-17 / gap round 16.
 - Decision: old harness-era tree at d:\breakdown remains untouched; spec_search and legacy modules are retired from this product by omission, not migration. Rationale: clean baseline; external scaffold is reference only. Date/Author: 2026-11-17.
+- Decision (D11–D22, approved with the Phase 2 plan 2026-11-18): rfc8785>=0.1.4 runtime dep for JCS canonicalization; SQLite for artifact/event/run stores (corrects the earlier JSONL sketch after reference inspection); state in `<target_repo>/.breakdown/`; non-git checkpoint fallback supported; sandbox = copy of checkpoint-listed files (VCS excluded); source_checkpoint_hash over the seed's full identity tuple; definition_digest = sha256(canonical_json(parsed definition)); loop exhaustion → completion failed (reason loop_exhausted); single-writer lockfile guard; engine task split T7a/T7b; Phase 2 stays offline; timeouts enforced on access (no daemon).
 
 ## Context and Orientation
 
@@ -180,7 +181,7 @@ d:\breakdown\system\storage\ (inspect before porting).
 |---|---|---|---|
 | P2-T0 | breakdown/canonical.py | canonical JSON (sorted keys) + sha256; digest recipes per yaml digests block | known-answer vectors |
 | P2-T1 | breakdown/artifact_store.py | CAS under .breakdown/artifacts/, atomic writes, revisions, digest-verified reads | roundtrip + tamper rows |
-| P2-T2 | breakdown/events.py | append-only run event log; persistent/ephemeral split via WorkflowEvent.persistence | split rows |
+| P2-T2 | breakdown/events.py | SQLite append-only run event log (ported pattern; earlier JSONL sketch corrected after reference inspection); persistent/ephemeral split via WorkflowEvent.persistence | split rows |
 | P2-T3 | breakdown/run_store.py, checkpoint.py | RunState machine, attempts, resume points, definition pinning; source_checkpoint deterministic op | tmp-git-repo vectors |
 | P2-T4 | breakdown/safety.py | absorbs tool containment; sandbox lifecycle; independent changed-path detection; sync authorization/reconciliation | unlocks 3 not_run zeros |
 | P2-T5 | breakdown/approvals.py | durable decision activator emitting output_by_action keys; binding digests; approval_hash; timeouts; request_changes loop counter (max 3, invalidation, on_exhausted) | approve/decline/changes/timeout/loop rows |
@@ -196,4 +197,29 @@ completion/success with approved paths synchronized only.
 
 🟧 ASSUMPTION: Phase 2 stays offline (fake backends); live SDK evaluation remains a
 separate binding milestone.
+
+## Phase 2 Progress
+
+- [x] (2026-11-18) P2-T0 canonical.py — RFC 8785/JCS port (rfc8785 0.1.4) + five digest
+  recipes (definition, artifact, source_checkpoint, frozen_plan, approval); 12 tests incl.
+  JCS known-answer vectors. Provenance: d:\breakdown\system\storage\canonical_serialization.py
+- [x] (2026-11-18) P2-T1 artifact_store.py — SQLite CAS, immutable revisions, idempotent
+  same-content writes, digest-verified reads, schema-validated get_model; 8 tests.
+  Provenance: d:\breakdown\system\storage\artifact_store.py
+- [x] (2026-11-18) P2-T2 events.py — SQLite append-only log over WorkflowEvent; ephemeral
+  events rejected from the durable log; canonical JSON lines with digest verification on
+  load; cursor pagination; 6 tests. Provenance: system\storage\event_store.py
+- [x] (2026-11-18) P2-T3 run_store.py + checkpoint.py + RunRecord model — CAS run state
+  with competing-writer rejection, definition pin immutable after run start, tamper
+  detection; checkpoint capture for git (origin/HEAD/tracked/untracked) and non-git
+  fallback; freshness comparison; 15 tests incl. tmp git repos.
+  Provenance: system\storage\checkpoint_store.py (CAS pattern)
+- [x] (2026-11-18) Gate A PASSED: pytest 130 passed · ruff check clean · ruff format clean ·
+  mypy strict 19 files 0 issues · --check 8 aligned + produces coverage full · evals 11/11
+  (5 scored zeros 0 violations; 3 builder zeros not_run until P2-T4)
+- [ ] P2-T4 safety.py — sandbox, changed-path detection, sync authorization (Gate B)
+- [ ] P2-T5 approvals.py — durable decisions, digests, timeouts, bounded loops
+- [ ] P2-T6 planning_ops.py — freeze_plan + preflight (14 declared checks)
+- [ ] P2-T7a engine happy path → P2-T7b budget/recovery/cancel/completion
+- [ ] P2-T8 reports + completion op · P2-T9 bootstrap/CLI · P2-T10 evals expansion (Gate C)
 

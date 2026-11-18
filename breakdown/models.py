@@ -783,6 +783,35 @@ class RunResult(StrictModel):
     stages_visited: tuple[str, ...] = ()
 
 
+class RunRecord(StrictModel):
+    """Durable run state (runtime-owned).
+
+    State transitions are CAS-guarded by the run store. The pinned
+    definition triple (workflow_id, definition_version, definition_digest)
+    is written at run start and never mutated afterwards
+    (definition.mutation_after_run_start: prohibited).
+    """
+
+    run_id: str = Field(min_length=1)
+    session_id: str = Field(min_length=1)
+    workflow_id: str = Field(min_length=1)
+    definition_version: int = Field(ge=1)
+    definition_digest: str = Field(min_length=1)
+    state: RunState = RunState.CREATED
+    current_stage: str | None = None
+    stage_attempts: Mapping[str, int] = Field(default_factory=dict)
+    loop_counters: Mapping[str, int] = Field(default_factory=dict)
+    tokens_used: int = Field(default=0, ge=0)
+    tool_calls_used: int = Field(default=0, ge=0)
+    terminal_outcome: Literal["success", "partial", "cancelled", "failed"] | None = None
+    reason: str = ""
+    resume_point: str | None = None
+    initial_request_ref: ArtifactRef | None = None
+    source_checkpoint_ref: ArtifactRef | None = None
+    created_at: AwareDatetime
+    updated_at: AwareDatetime
+
+
 # --- Events ---
 
 

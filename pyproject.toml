@@ -7,6 +7,7 @@ dependencies = [
     "pydantic>=2,<3",
     "pydantic-settings>=2,<3",
     "pyyaml>=6",
+    "rfc8785>=0.1.4",
 ]
 
 [build-system]
