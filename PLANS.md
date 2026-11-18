@@ -217,9 +217,22 @@ separate binding milestone.
 - [x] (2026-11-18) Gate A PASSED: pytest 130 passed · ruff check clean · ruff format clean ·
   mypy strict 19 files 0 issues · --check 8 aligned + produces coverage full · evals 11/11
   (5 scored zeros 0 violations; 3 builder zeros not_run until P2-T4)
-- [ ] P2-T4 safety.py — sandbox, changed-path detection, sync authorization (Gate B)
-- [ ] P2-T5 approvals.py — durable decisions, digests, timeouts, bounded loops
-- [ ] P2-T6 planning_ops.py — freeze_plan + preflight (14 declared checks)
+- [x] (2026-11-18) P2-T4 safety.py — containment authority moved from tools.py (tools now
+  delegate); SafetyBoundary: checkpoint-listed sandbox, independent hash-diff changed-path
+  detection, authorization per yaml synchronization.requires, atomic reconciled copy-back,
+  protected-path refusal; 17 tests. The three builder blocking zeros are now enforceable.
+- [x] (2026-11-18) P2-T5 approvals.py — durable decision activator (closes G7): pending
+  decisions with binding refs/digests captured at pause, ApprovalBindingStale enforcement,
+  ResearchApprovalRecord/PlanApprovalRecord with full decision_binding fields, approval_hash
+  per canonical recipe, timeout-on-access → cancelled, request_changes loop counter with
+  definition-derived max_loops/invalidation, loop exhaustion → failed (D18/D24); 14 tests.
+  Models added: PendingDecision, StoredValue, RunRecord.produced_artifacts (D23).
+- [x] (2026-11-18) P2-T6 planning_ops.py — freeze_plan + run_preflight implementing all 14
+  declared checks as pure deterministic functions + PLANNING_OPERATIONS adapters for the
+  deterministic-op registry; 14 tests.
+- [x] (2026-11-18) Gate B PASSED: pytest 177 passed (0 F/0 E) · ruff check clean ·
+  ruff format 48 files clean · mypy strict 22 files 0 issues · --check 8 aligned +
+  produces coverage full · evals 11/11 (zeros unchanged until P2-T10 wiring)
 - [ ] P2-T7a engine happy path → P2-T7b budget/recovery/cancel/completion
 - [ ] P2-T8 reports + completion op · P2-T9 bootstrap/CLI · P2-T10 evals expansion (Gate C)
 

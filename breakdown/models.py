@@ -187,6 +187,17 @@ class ArtifactRevision(StrictModel):
     created_at: AwareDatetime
 
 
+class StoredValue(StrictModel):
+    """Envelope for scalar/tuple artifacts in the BaseModel-only store.
+
+    Role mappers emit models, strings, and tuples; the artifact store
+    persists models, so non-model values travel in this envelope and are
+    unwrapped on input assembly.
+    """
+
+    value: Any
+
+
 class SourceCheckpoint(StrictModel):
     repository_identity: str = Field(min_length=1)
     commit_sha: str | None = None
@@ -734,6 +745,19 @@ class PlanApprovalRecord(StrictModel):
         return value
 
 
+class PendingDecision(StrictModel):
+    """Durable decision request: the exact binding refs and digests captured
+    when the run paused. A decision can land only while these remain current."""
+
+    run_id: str = Field(min_length=1)
+    stage_id: str = Field(min_length=1)
+    options: tuple[str, ...] = Field(min_length=1)
+    requested_at: AwareDatetime
+    timeout_seconds: int = Field(ge=1)
+    binding_refs: Mapping[str, ArtifactRef] = Field(default_factory=dict)
+    binding_digests: Mapping[str, str] = Field(default_factory=dict)
+
+
 # --- Completion / terminal records ---
 
 
@@ -808,6 +832,7 @@ class RunRecord(StrictModel):
     resume_point: str | None = None
     initial_request_ref: ArtifactRef | None = None
     source_checkpoint_ref: ArtifactRef | None = None
+    produced_artifacts: Mapping[str, ArtifactRef] = Field(default_factory=dict)
     created_at: AwareDatetime
     updated_at: AwareDatetime
 

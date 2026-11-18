@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from breakdown.models import SourceCheckpoint
-from breakdown.tools import SKIPPED_DIR_NAMES
+from breakdown.safety import SKIPPED_DIR_NAMES
 
 _SKIP_DIRS = frozenset(SKIPPED_DIR_NAMES | {".breakdown"})
 

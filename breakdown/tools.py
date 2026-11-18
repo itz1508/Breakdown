@@ -10,8 +10,8 @@ distinct from the schema validation applied here to every input.
 synchronization authorization are deterministic runtime operations — they
 are never model-callable tools and never appear in this registry.
 
-Phase 2 moves containment policy into ``safety.py``; until then the
-read-containment helpers below are the authoritative boundary for tools.
+Containment policy is owned by ``safety.py``; this module delegates path
+resolution and denied-name checks to it.
 """
 
 from __future__ import annotations
@@ -26,23 +26,15 @@ from typing import Any
 from pydantic import Field, ValidationError
 
 from breakdown.models import StrictModel
+from breakdown.safety import (
+    SKIPPED_DIR_NAMES,
+    ContainmentError,
+    is_denied_read_name,
+    resolve_contained,
+)
 
 MAX_FILE_BYTES = 1_000_000
 MAX_RESULTS_DEFAULT = 50
-
-SKIPPED_DIR_NAMES = frozenset(
-    {
-        ".git",
-        ".venv",
-        "venv",
-        "node_modules",
-        "__pycache__",
-        ".breakdown",
-        ".mypy_cache",
-        ".ruff_cache",
-        ".pytest_cache",
-    }
-)
 
 
 class ToolInputNotValid(ValueError):
@@ -54,23 +46,11 @@ class ToolNotAuthorized(PermissionError):
 
 
 def resolve_inside_root(root: Path, relative: str) -> Path:
-    """Resolve ``relative`` strictly inside ``root`` or raise."""
-    if not relative or relative.strip() != relative:
-        raise ToolNotAuthorized("path must be a non-empty, unpadded relative path")
-    candidate = root / relative.replace("\\", "/")
-    resolved_root = root.resolve()
+    """Delegate to the safety boundary; translate containment errors."""
     try:
-        resolved = candidate.resolve()
-    except OSError as exc:  # pragma: no cover - platform path errors
-        raise ToolNotAuthorized(f"path cannot be resolved: {relative}") from exc
-    if not resolved.is_relative_to(resolved_root):
-        raise ToolNotAuthorized(f"path escapes the target repository: {relative}")
-    return resolved
-
-
-def _denied_name(path: Path) -> bool:
-    name = path.name
-    return name == ".env" or name.startswith(".env.")
+        return resolve_contained(root, relative)
+    except ContainmentError as exc:
+        raise ToolNotAuthorized(str(exc)) from exc
 
 
 def _iter_text_files(root: Path) -> Sequence[Path]:
@@ -80,7 +60,7 @@ def _iter_text_files(root: Path) -> Sequence[Path]:
             continue
         if any(part in SKIPPED_DIR_NAMES for part in path.relative_to(root).parts):
             continue
-        if _denied_name(path):
+        if is_denied_read_name(path.name):
             continue
         try:
             if path.stat().st_size > MAX_FILE_BYTES:
@@ -180,7 +160,7 @@ def source_read(payload: SourceReadRequest, *, root: Path) -> SourceReadResult:
     resolved = resolve_inside_root(root, payload.path)
     if not resolved.is_file():
         raise ToolNotAuthorized(f"path does not identify a file: {payload.path}")
-    if _denied_name(resolved):
+    if is_denied_read_name(resolved.name):
         raise ToolNotAuthorized("reading .env files is not allowed; settings are injected by the runtime")
     raw = resolved.read_bytes()
     try:
