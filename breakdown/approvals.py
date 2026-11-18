@@ -220,6 +220,19 @@ class ApprovalManager:
             if stored != ref.digest:
                 raise ApprovalBindingStale(f"binding {artifact_key!r} digest mismatch in store")
 
+    def _retained_evidence(self, record: RunRecord) -> ArtifactRef:
+        """Retained evidence at terminal routing: refs of everything produced so far."""
+        value = [
+            {"artifact_key": ref.artifact_key, "revision": ref.revision, "digest": ref.digest}
+            for _, ref in sorted(record.produced_artifacts.items())
+        ]
+        return self.artifacts.store_artifact(
+            StoredValue(value=value),
+            "retained_evidence",
+            contract_id=record.current_stage or "runtime",
+            contract_version=self._contract_version(),
+        )
+
     def _route_timeout(self, record: RunRecord, stage_id: str, now: datetime) -> DecisionOutcome:
         cancellation = CancellationRecord(
             cancelled_by="runtime", reason=f"decision timeout at {stage_id}", occurred_at=now
@@ -234,7 +247,10 @@ class ApprovalManager:
             terminal=True,
             terminal_outcome="cancelled",
             reason="timeout",
-            produced={"cancellation_record": ref},
+            produced={
+                "cancellation_record": ref,
+                "retained_evidence": self._retained_evidence(record),
+            },
         )
 
     def _research_approval(
@@ -271,6 +287,7 @@ class ApprovalManager:
         produced["cancellation_record"] = self.artifacts.store_artifact(
             cancellation, "cancellation_record", contract_id="research_approval", contract_version=version
         )
+        produced["retained_evidence"] = self._retained_evidence(record)
         return DecisionOutcome(
             run_id=record.run_id,
             action="cancel",
@@ -343,6 +360,7 @@ class ApprovalManager:
             produced["cancellation_record"] = self.artifacts.store_artifact(
                 cancellation, "cancellation_record", contract_id="plan_approval", contract_version=version
             )
+            produced["retained_evidence"] = self._retained_evidence(record)
             return DecisionOutcome(
                 run_id=record.run_id,
                 action="decline",

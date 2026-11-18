@@ -92,7 +92,7 @@ class StageContract:
 
 async def activate_role_contract(
     contract: StageContract,
-    payload: Mapping[str, Any],
+    payload: Mapping[str, Any] | BaseModel,
     context: StageContext,
     roles: Mapping[str, Any],
 ) -> StageResult:
@@ -100,10 +100,18 @@ async def activate_role_contract(
     semantic validators, and map produced artifacts explicitly."""
     if contract.input_model is None or contract.output_model is None:
         raise ContractConfigurationError(f"{contract.stage_id}: role contract missing typed models")
-    try:
-        input_value = contract.input_model.model_validate(dict(payload))
-    except ValidationError as exc:
-        raise ContractActivationError(f"{contract.stage_id}: invalid input: {exc}") from exc
+    if isinstance(payload, BaseModel):
+        if not isinstance(payload, contract.input_model):
+            raise ContractActivationError(
+                f"{contract.stage_id}: payload type {type(payload).__name__} "
+                f"does not match {contract.input_model.__name__}"
+            )
+        input_value = payload
+    else:
+        try:
+            input_value = contract.input_model.model_validate(dict(payload))
+        except ValidationError as exc:
+            raise ContractActivationError(f"{contract.stage_id}: invalid input: {exc}") from exc
 
     role = roles.get(contract.owner)
     if role is None:

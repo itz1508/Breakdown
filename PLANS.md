@@ -233,6 +233,21 @@ separate binding milestone.
 - [x] (2026-11-18) Gate B PASSED: pytest 177 passed (0 F/0 E) · ruff check clean ·
   ruff format 48 files clean · mypy strict 22 files 0 issues · --check 8 aligned +
   produces coverage full · evals 11/11 (zeros unchanged until P2-T10 wiring)
-- [ ] P2-T7a engine happy path → P2-T7b budget/recovery/cancel/completion
-- [ ] P2-T8 reports + completion op · P2-T9 bootstrap/CLI · P2-T10 evals expansion (Gate C)
+- [x] (2026-11-18) P2-T7a engine happy path — WorkflowEngine on the stores: start_run
+  (definition pin via canonical digest + checkpoint capture), contract-driven advance loop
+  with per-stage input assemblers, artifact persistence (StoredValue envelope for non-model
+  values), runtime post-steps (freeze+preflight after planning; sandbox→detect→authorize→
+  synchronize→reconcile after build), decision pauses via ApprovalManager, record_decision
+  bridge, cancel, completion with accepts-matrix validation; per-run role construction
+  (D25); cross-instance resume proven. 6 e2e tests incl. full scripted run reaching
+  completion/success with real file sync into the target repo.
+  Cycle-1 gap pass found & fixed: (1) forward arrival at completion defaulted to failed —
+  success path now derives outcome success; (2) completion accepts matrix requires
+  retained_evidence on cancelled/failed routes — approvals + engine terminal routes now
+  persist it; (3) STAGE_ENTERED was duplicated for stage 1 and missing for decision stages —
+  entry events now emitted exactly once per stage entry (7 per full run, pinned by test).
+  Validation points hooked: 7/8 (budget point lands with T7b); observability events: 8/9
+  (cost_threshold_approached lands with T7b).
+- [ ] P2-T7b budget/recovery/timeout/uncertainty routing
+- [ ] P2-T8 reports + completion polish · P2-T9 bootstrap/CLI · P2-T10 evals expansion (Gate C)
 

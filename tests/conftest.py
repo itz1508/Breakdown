@@ -6,7 +6,7 @@ RoleBackend / CodingBackend protocols defined in ``breakdown.contracts``.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -52,18 +52,29 @@ class FakeRoleBackend:
 
 
 class FakeCodingBackend:
-    """Scripted coding backend for sandbox task application."""
+    """Scripted coding backend for sandbox task application.
 
-    def __init__(self, result: CodingBackendResult | None = None) -> None:
+    ``on_apply`` optionally mutates the sandbox (simulating real file
+    edits) before the canned result is returned.
+    """
+
+    def __init__(
+        self,
+        result: CodingBackendResult | None = None,
+        on_apply: Callable[[CodingBackendRequest], None] | None = None,
+    ) -> None:
         self.result = result or CodingBackendResult(
             execution_result=ExecutionResult.COMPLETED,
             observation="applied the approved change",
             reported_changed_paths=(),
         )
+        self.on_apply = on_apply
         self.requests: list[CodingBackendRequest] = []
 
     async def apply_task(self, request: CodingBackendRequest) -> CodingBackendResult:
         self.requests.append(request)
+        if self.on_apply is not None:
+            self.on_apply(request)
         return self.result
 
 

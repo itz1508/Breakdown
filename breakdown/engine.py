@@ -1,21 +1,82 @@
-"""Workflow engine: definition authority + (Phase 2) run lifecycle.
+"""Workflow engine: definition authority + run lifecycle.
 
-Phase 1 scope: load and validate the declarative definition, prove the
-forward dependency graph is acyclic, validate loop-backs separately, and
-resolve transitions. Run lifecycle (start/record_decision/resume/cancel)
-lands in Phase 2 together with the storage owners.
+Phase 1 shipped definition loading/validation and transition resolution.
+Phase 2 (P2-T7) adds the durable run lifecycle on top of the stores:
+
+- ``start_run`` pins the definition triple and captures the source
+  checkpoint (definition.mutation_after_run_start: prohibited),
+- ``advance`` executes the contract-driven stage loop until the run pauses
+  at a decision stage or reaches a terminal state,
+- ``record_decision`` bridges the durable approval manager,
+- ``cancel`` routes any non-terminal run to completion/cancelled.
+
+Each CLI invocation is stateless: all state lives in the stores, so a run
+can pause at ``awaiting_decision`` and resume in a later process.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import asyncio
+import secrets
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from graphlib import CycleError, TopologicalSorter
 from pathlib import Path
+from typing import Any, Literal
 
 import yaml
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
-from breakdown.models import ContractKind, WorkflowDefinition
+from breakdown.approvals import ApprovalManager
+from breakdown.artifact_store import ArtifactStore
+from breakdown.canonical import definition_digest as compute_definition_digest
+from breakdown.checkpoint import capture_source_checkpoint, checkpoint_is_fresh
+from breakdown.contracts import (
+    ContractActivationError,
+    ContractRegistry,
+    StageContract,
+    activate_role_contract,
+)
+from breakdown.events import EventStore
+from breakdown.models import (
+    ArtifactRef,
+    BuildExecutionInput,
+    BuildExecutionOutput,
+    CancellationRecord,
+    ClassifiedFinding,
+    CompletionRecord,
+    ContractKind,
+    CostSummary,
+    CriterionResult,
+    EventType,
+    FailureRecord,
+    FindingsReviewInput,
+    FixtureSpecification,
+    ImplementationPlan,
+    ImplementationPlanningInput,
+    InitialRequest,
+    NormalizedEvidence,
+    PlanApprovalRecord,
+    PreflightResult,
+    ProcessingPlan,
+    ResearchExecutionInput,
+    ResearchProposalInput,
+    ResearchProposalOutput,
+    ResearchRecord,
+    RunRecord,
+    RunRef,
+    RunState,
+    SourceCheckpoint,
+    StageContext,
+    StoredValue,
+    SynchronizationResult,
+    UnresolvedQuestion,
+    WorkflowDefinition,
+)
+from breakdown.planning_ops import freeze_plan, run_preflight
+from breakdown.run_store import RunStore
+from breakdown.safety import SafetyBoundary
 
 
 class WorkflowDefinitionError(ValueError):
@@ -143,3 +204,484 @@ def resolve_next_stage(definition: WorkflowDefinition, current_id: str, *, actio
         return stage.next
     following = [candidate for candidate in definition.stages if candidate.order == stage.order + 1]
     return following[0].id if following else None
+
+
+# --- Phase 2 run lifecycle (P2-T7) ---
+
+
+class EngineError(RuntimeError):
+    pass
+
+
+RoleFactory = Callable[[Path | None], Mapping[str, object]]
+
+
+@dataclass(frozen=True, slots=True)
+class EngineStores:
+    artifacts: ArtifactStore
+    events: EventStore
+    runs: RunStore
+    safety: SafetyBoundary
+
+
+def _utcnow() -> datetime:
+    return datetime.now(UTC)
+
+
+class WorkflowEngine:
+    """Contract-driven stage loop on top of durable stores.
+
+    The engine owns progression; roles never call each other. Each public
+    method runs to the next pause (awaiting_decision) or terminal state and
+    returns the stored run record, so CLI invocations stay stateless.
+    """
+
+    def __init__(
+        self,
+        *,
+        definition: WorkflowDefinition,
+        contracts: ContractRegistry,
+        stores: EngineStores,
+        approvals: ApprovalManager,
+        role_factory: RoleFactory,
+    ) -> None:
+        self.definition = definition
+        self.contracts = contracts
+        self.stores = stores
+        self.approvals = approvals
+        self.role_factory = role_factory
+        self._definition_digest = compute_definition_digest(definition.model_dump(mode="json"))
+
+    def _reload(self, run_id: str) -> RunRecord:
+        loaded = self.stores.runs.load(run_id)
+        if loaded is None:
+            raise EngineError(f"run {run_id} not found")
+        return loaded[1]
+
+    def _store(self, key: str, model: BaseModel, contract_id: str) -> ArtifactRef:
+        return self.stores.artifacts.store_artifact(
+            model, key, contract_id=contract_id, contract_version=str(self.definition.definition_version)
+        )
+
+    def start_run(self, request_text: str, *, user_identity: str, session_id: str | None = None) -> RunRecord:
+        """Pin the definition triple, capture the source checkpoint, create the run."""
+        now = _utcnow()
+        run_id = f"run-{secrets.token_hex(6)}"
+        checkpoint = capture_source_checkpoint(self.stores.safety.target_root)
+        request = InitialRequest(text=request_text, created_at=now)
+        request_ref = self._store("initial_request", request, "intake")
+        checkpoint_ref = self._store("source_checkpoint", checkpoint, "runtime")
+        record = RunRecord(
+            run_id=run_id,
+            session_id=session_id or f"session-{secrets.token_hex(6)}",
+            workflow_id=self.definition.workflow_id,
+            definition_version=self.definition.definition_version,
+            definition_digest=self._definition_digest,
+            state=RunState.RUNNING,
+            current_stage="research_proposal",
+            initial_request_ref=request_ref,
+            source_checkpoint_ref=checkpoint_ref,
+            produced_artifacts={"initial_request": request_ref, "source_checkpoint": checkpoint_ref},
+            created_at=now,
+            updated_at=now,
+        )
+        self.stores.runs.create_run(record)
+        return record
+
+    def advance(self, run_id: str) -> RunRecord:
+        """Advance the run until it pauses at a decision or goes terminal."""
+        while True:
+            loaded = self.stores.runs.load(run_id)
+            if loaded is None:
+                raise EngineError(f"run {run_id} not found")
+            revision, record = loaded
+            if record.state in (RunState.TERMINAL, RunState.AWAITING_DECISION):
+                return record
+            stage_id = record.current_stage
+            if not stage_id:
+                raise EngineError(f"run {run_id} has no current stage")
+            contract = self.contracts.get(stage_id)
+            if contract.kind is ContractKind.DECISION:
+                self.stores.events.emit(
+                    EventType.STAGE_ENTERED,
+                    run_id=run_id,
+                    stage_id=stage_id,
+                    attempt=record.stage_attempts.get(stage_id, 0) + 1,
+                )
+                self.approvals.request_decision(run_id)
+                return self._reload(run_id)
+            if contract.kind is ContractKind.DETERMINISTIC:
+                # Forward arrival at completion (only possible from build_execution)
+                # means success; failure/cancel routes set terminal_outcome explicitly.
+                return self._complete_run(run_id, record.terminal_outcome or "success", record.reason)
+            self.stores.events.emit(
+                EventType.STAGE_ENTERED,
+                run_id=run_id,
+                stage_id=stage_id,
+                attempt=record.stage_attempts.get(stage_id, 0) + 1,
+            )
+            self._run_role_stage(run_id, revision, record, stage_id, contract)
+
+    def _run_role_stage(
+        self, run_id: str, revision: int, record: RunRecord, stage_id: str, contract: StageContract
+    ) -> None:
+        input_value = self._assemble_input(stage_id, record)
+        sandbox: Path | None = None
+        approved_checkpoint: SourceCheckpoint | None = None
+        if stage_id == "build_execution":
+            approved_checkpoint = self._load_model(record, "approved_source_checkpoint", SourceCheckpoint)
+            sandbox = self.stores.safety.create_sandbox(run_id, approved_checkpoint)
+        roles = self.role_factory(sandbox)
+        attempt = record.stage_attempts.get(stage_id, 0) + 1
+        context = StageContext(
+            run=RunRef(
+                run_id=run_id,
+                session_id=record.session_id,
+                definition_version=record.definition_version,
+                definition_digest=record.definition_digest,
+            ),
+            stage_id=stage_id,
+            attempt=attempt,
+        )
+        try:
+            result = asyncio.run(activate_role_contract(contract, input_value, context, roles))
+        except ContractActivationError as exc:
+            self._route_failed(run_id, revision, record, stage_id, f"activation failed: {exc}")
+            return
+        if result.criterion is not CriterionResult.VALID:
+            self._route_failed(run_id, revision, record, stage_id, result.reason or "stage criterion not valid")
+            return
+        produced = dict(record.produced_artifacts)
+        for key, value in result.produces.items():
+            model = value if isinstance(value, BaseModel) else StoredValue(value=value)
+            ref = self._store(key, model, stage_id)
+            produced[key] = ref
+            self.stores.events.emit(
+                EventType.ARTIFACT_PRODUCED,
+                run_id=run_id,
+                stage_id=stage_id,
+                payload={"artifact_key": key, "revision": ref.revision},
+            )
+        failure_reason: str | None = None
+        if stage_id == "implementation_planning":
+            failure_reason = self._freeze_and_preflight(run_id, stage_id, produced)
+        if stage_id == "build_execution" and failure_reason is None:
+            assert approved_checkpoint is not None
+            failure_reason = self._post_build(run_id, produced, approved_checkpoint)
+        attempts = dict(record.stage_attempts)
+        attempts[stage_id] = attempt
+        if failure_reason is not None:
+            failure = FailureRecord(
+                stage_id=stage_id, error_type="stage_failed", evidence=failure_reason, occurred_at=_utcnow()
+            )
+            produced["failure_record"] = self._store("failure_record", failure, stage_id)
+            produced["retained_evidence"] = self._retained_evidence_ref(record, produced)
+            self.stores.events.emit(EventType.STAGE_FAILED, run_id=run_id, stage_id=stage_id)
+            self.stores.runs.update_run(
+                record.model_copy(
+                    update={
+                        "state": RunState.RUNNING,
+                        "current_stage": "completion",
+                        "terminal_outcome": "failed",
+                        "reason": failure_reason,
+                        "produced_artifacts": produced,
+                        "stage_attempts": attempts,
+                        "resume_point": stage_id,
+                    }
+                ),
+                expected_revision=revision,
+            )
+            return
+        self.stores.events.emit(EventType.STAGE_COMPLETED, run_id=run_id, stage_id=stage_id)
+        next_stage = resolve_next_stage(self.definition, stage_id)
+        if next_stage is None:
+            raise EngineError(f"stage {stage_id} has no forward transition")
+        self.stores.runs.update_run(
+            record.model_copy(
+                update={
+                    "state": RunState.RUNNING,
+                    "current_stage": next_stage,
+                    "produced_artifacts": produced,
+                    "stage_attempts": attempts,
+                }
+            ),
+            expected_revision=revision,
+        )
+
+    def _load_model(self, record: RunRecord, key: str, model_type: type[BaseModel]) -> Any:
+        ref = record.produced_artifacts.get(key)
+        if ref is None:
+            raise EngineError(f"required artifact {key!r} has not been produced")
+        return self.stores.artifacts.get_model(model_type, ref.artifact_key, ref.revision)
+
+    def _load_value(self, record: RunRecord, key: str) -> Any:
+        return self._load_model(record, key, StoredValue).value
+
+    def _assemble_input(self, stage_id: str, record: RunRecord) -> BaseModel:
+        """Deterministic input assembly from stored artifacts
+        (schema_validation point: stage_input_resolution)."""
+        if stage_id == "research_proposal":
+            return ResearchProposalInput(initial_request=self._load_model(record, "initial_request", InitialRequest))
+        if stage_id == "research_execution":
+            return ResearchExecutionInput(
+                research_proposal=self._load_model(record, "research_proposal", ResearchProposalOutput),
+                processing_plan=self._load_model(record, "research_execution_processing_plan", ProcessingPlan),
+                research_approval_ref=record.produced_artifacts["research_approval_record"],
+                source_checkpoint=self._load_model(record, "source_checkpoint", SourceCheckpoint),
+            )
+        if stage_id == "findings_review":
+            return FindingsReviewInput(
+                research_record=self._load_model(record, "research_response", ResearchRecord),
+                research_proposal=self._load_model(record, "research_proposal", ResearchProposalOutput),
+                exact_user_intent=str(self._load_value(record, "exact_user_intent")),
+                source_checkpoint=self._load_model(record, "source_checkpoint", SourceCheckpoint),
+            )
+        if stage_id == "implementation_planning":
+            classified = tuple(
+                ClassifiedFinding.model_validate(item) for item in self._load_value(record, "classified_findings")
+            )
+            normalized = tuple(
+                NormalizedEvidence.model_validate(item) for item in self._load_value(record, "normalized_evidence")
+            )
+            fixtures = tuple(
+                FixtureSpecification.model_validate(item)
+                for item in self._load_value(record, "reviewed_fixture_specifications")
+            )
+            unresolved = tuple(
+                UnresolvedQuestion.model_validate(item)
+                for item in self._load_value(record, "reviewed_unresolved_questions")
+            )
+            return ImplementationPlanningInput(
+                processing_plan=self._load_model(record, "implementation_planning_processing_plan", ProcessingPlan),
+                classified_findings=classified,
+                normalized_evidence=normalized,
+                reviewed_fixture_specifications=fixtures,
+                reviewed_unresolved_questions=unresolved,
+                exact_user_intent=str(self._load_value(record, "exact_user_intent")),
+                source_checkpoint=self._load_model(record, "source_checkpoint", SourceCheckpoint),
+            )
+        if stage_id == "build_execution":
+            approval_record = self._load_model(record, "plan_approval_record", PlanApprovalRecord)
+            if not approval_record.approval_hash:
+                raise EngineError("plan approval record carries no approval hash")
+            return BuildExecutionInput(
+                implementation_plan=self._load_model(record, "implementation_plan", ImplementationPlan),
+                frozen_plan_hash=str(self._load_value(record, "frozen_plan_hash")),
+                preflight_result=self._load_model(record, "preflight_result", PreflightResult),
+                plan_approval_ref=record.produced_artifacts["plan_approval_record"],
+                approval_hash=approval_record.approval_hash,
+                approved_plan_revision=int(self._load_value(record, "approved_plan_revision")),
+                approved_source_checkpoint=self._load_model(record, "approved_source_checkpoint", SourceCheckpoint),
+                processing_plan=self._load_model(record, "build_execution_processing_plan", ProcessingPlan),
+            )
+        raise EngineError(f"no input assembler for stage {stage_id}")
+
+    def _freeze_and_preflight(self, run_id: str, stage_id: str, produced: dict[str, ArtifactRef]) -> str | None:
+        """implementation_planning.runtime_steps: freeze_plan + preflight_check."""
+        plan_ref = produced.get("implementation_plan")
+        checkpoint_ref = produced.get("source_checkpoint")
+        if plan_ref is None or checkpoint_ref is None:
+            return "implementation planning did not produce the required artifacts"
+        plan = self.stores.artifacts.get_model(ImplementationPlan, plan_ref.artifact_key, plan_ref.revision)
+        checkpoint = self.stores.artifacts.get_model(
+            SourceCheckpoint, checkpoint_ref.artifact_key, checkpoint_ref.revision
+        )
+        frozen = freeze_plan(plan=plan, checkpoint=checkpoint, definition_version=self.definition.definition_version)
+        frozen_ref = self._store("frozen_plan", frozen, stage_id)
+        hash_ref = self._store("frozen_plan_hash", StoredValue(value=frozen.frozen_plan_hash), stage_id)
+        required_keys = (
+            "classified_findings",
+            "normalized_evidence",
+            "reviewed_fixture_specifications",
+            "reviewed_unresolved_questions",
+            "exact_user_intent",
+        )
+        preflight = run_preflight(
+            plan=plan,
+            checkpoint=checkpoint,
+            target_root=self.stores.safety.target_root,
+            required_artifacts={key: key in produced for key in required_keys},
+        )
+        preflight_ref = self._store("preflight_result", preflight, stage_id)
+        produced.update({"frozen_plan": frozen_ref, "frozen_plan_hash": hash_ref, "preflight_result": preflight_ref})
+        for key, ref in (
+            ("frozen_plan", frozen_ref),
+            ("frozen_plan_hash", hash_ref),
+            ("preflight_result", preflight_ref),
+        ):
+            self.stores.events.emit(
+                EventType.ARTIFACT_PRODUCED,
+                run_id=run_id,
+                stage_id=stage_id,
+                payload={"artifact_key": key, "revision": ref.revision},
+            )
+        if preflight.criterion is not CriterionResult.VALID:
+            blocked = sorted(
+                row.name for row in preflight.criteria_results if row.criterion is not CriterionResult.VALID
+            )
+            return f"preflight not valid: {blocked}"
+        return None
+
+    def _approval_bindings_current(self, record: RunRecord) -> bool:
+        ref = record.produced_artifacts.get("plan_approval_record")
+        if ref is None:
+            return False
+        return self.stores.artifacts.get_digest(ref.artifact_key, ref.revision) == ref.digest
+
+    def _post_build(
+        self, run_id: str, produced: dict[str, ArtifactRef], approved_checkpoint: SourceCheckpoint
+    ) -> str | None:
+        """build_execution.synchronization: detect, authorize, synchronize, reconcile."""
+        report = self.stores.safety.detect_changed_paths(run_id, approved_checkpoint)
+        build_ref = produced.get("build_result")
+        plan_ref = produced.get("implementation_plan")
+        if build_ref is None or plan_ref is None:
+            return "build execution did not produce the required artifacts"
+        build_output = self.stores.artifacts.get_model(BuildExecutionOutput, build_ref.artifact_key, build_ref.revision)
+        plan = self.stores.artifacts.get_model(ImplementationPlan, plan_ref.artifact_key, plan_ref.revision)
+        approved_paths = {target.path for task in plan.tasks for target in task.target_paths}
+        task_results_valid = all(result.criterion is CriterionResult.VALID for result in build_output.task_results)
+        integration_valid = all(result.criterion is CriterionResult.VALID for result in build_output.validation_results)
+        record = self._reload(run_id)
+        sync_result = self.stores.safety.authorize_synchronization(
+            report=report,
+            approved_paths=approved_paths,
+            task_results_valid=task_results_valid,
+            integration_valid=integration_valid,
+            bindings_current=self._approval_bindings_current(record),
+            preconditions_current=checkpoint_is_fresh(approved_checkpoint, self.stores.safety.target_root),
+        )
+        if not sync_result.authorized:
+            produced["synchronization_result"] = self._store("synchronization_result", sync_result, "build_execution")
+            return f"synchronization blocked: {sync_result.blocked_reason}"
+        copied = self.stores.safety.synchronize(sync_result, run_id=run_id)
+        final_result = sync_result.model_copy(update={"copied_paths": copied})
+        produced["synchronization_result"] = self._store("synchronization_result", final_result, "build_execution")
+        resulting = capture_source_checkpoint(self.stores.safety.target_root)
+        produced["resulting_source_checkpoint"] = self._store(
+            "resulting_source_checkpoint", resulting, "build_execution"
+        )
+        self.stores.safety.teardown_sandbox(run_id)
+        return None
+
+    def _retained_evidence_ref(self, record: RunRecord, produced: Mapping[str, ArtifactRef]) -> ArtifactRef:
+        """Retained evidence for terminal routing: refs produced so far (completion accepts requirement)."""
+        merged = dict(record.produced_artifacts)
+        merged.update(produced)
+        value = [
+            {"artifact_key": ref.artifact_key, "revision": ref.revision, "digest": ref.digest}
+            for _, ref in sorted(merged.items())
+        ]
+        return self._store("retained_evidence", StoredValue(value=value), "runtime")
+
+    def _route_failed(self, run_id: str, revision: int, record: RunRecord, stage_id: str, reason: str) -> None:
+        """T7a failure route: persist a FailureRecord and head to completion/failed.
+        (T7b inserts the recovery-attempt policy before routing.)"""
+        failure = FailureRecord(stage_id=stage_id, error_type="stage_failed", evidence=reason, occurred_at=_utcnow())
+        produced = dict(record.produced_artifacts)
+        produced["failure_record"] = self._store("failure_record", failure, stage_id)
+        produced["retained_evidence"] = self._retained_evidence_ref(record, produced)
+        self.stores.events.emit(EventType.STAGE_FAILED, run_id=run_id, stage_id=stage_id)
+        self.stores.runs.update_run(
+            record.model_copy(
+                update={
+                    "state": RunState.RUNNING,
+                    "current_stage": "completion",
+                    "terminal_outcome": "failed",
+                    "reason": reason,
+                    "produced_artifacts": produced,
+                    "resume_point": stage_id,
+                }
+            ),
+            expected_revision=revision,
+        )
+
+    def _complete_run(self, run_id: str, outcome: str, reason: str) -> RunRecord:
+        """Deterministic completion stage: accepts-matrix validation + terminal record."""
+        loaded = self.stores.runs.load(run_id)
+        if loaded is None:
+            raise EngineError(f"run {run_id} not found")
+        revision, record = loaded
+        if record.state is RunState.TERMINAL:
+            return record
+        accepts = self.definition.get_stage("completion").accepts or {}
+        required_keys = tuple(str(key) for key in (accepts.get(outcome) or {}).get("requires", []))
+        missing = [key for key in required_keys if key not in record.produced_artifacts]
+        if missing:
+            raise EngineError(f"completion accepts matrix unmet for {outcome!r}: missing {missing}")
+        changed_paths: tuple[str, ...] = ()
+        sync_ref = record.produced_artifacts.get("synchronization_result")
+        if sync_ref is not None:
+            sync = self.stores.artifacts.get_model(SynchronizationResult, sync_ref.artifact_key, sync_ref.revision)
+            changed_paths = sync.copied_paths
+        validation_results: tuple[Any, ...] = ()
+        build_ref = record.produced_artifacts.get("build_result")
+        if build_ref is not None:
+            build_output = self.stores.artifacts.get_model(
+                BuildExecutionOutput, build_ref.artifact_key, build_ref.revision
+            )
+            validation_results = build_output.validation_results
+        terminal_state = {"success": "completed", "partial": "completed"}.get(outcome, outcome)
+        completion = CompletionRecord(
+            completion_outcome=outcome,
+            changed_paths=changed_paths,
+            validation_results=validation_results,
+            criterion_results=(),
+            remaining_work=(),
+            retained_evidence=(),
+            resulting_source_checkpoint=record.produced_artifacts.get("resulting_source_checkpoint"),
+            cost_summary=CostSummary(tokens_used=record.tokens_used, tool_calls_used=record.tool_calls_used),
+            terminal_state=terminal_state,
+            completed_at=_utcnow(),
+        )
+        completion_ref = self._store("completion_record", completion, "completion")
+        produced = dict(record.produced_artifacts)
+        produced["completion_record"] = completion_ref
+        self.stores.events.emit(
+            EventType.RUN_COMPLETED, run_id=run_id, stage_id="completion", payload={"outcome": outcome}
+        )
+        self.stores.runs.update_run(
+            record.model_copy(
+                update={
+                    "state": RunState.TERMINAL,
+                    "current_stage": "completion",
+                    "terminal_outcome": outcome,
+                    "reason": reason,
+                    "produced_artifacts": produced,
+                }
+            ),
+            expected_revision=revision,
+        )
+        return self._reload(run_id)
+
+    def record_decision(self, run_id: str, action: str, *, user_identity: str, reason: str = "") -> RunRecord:
+        outcome = self.approvals.record_decision(run_id, action, user_identity=user_identity, reason=reason)
+        if outcome.terminal:
+            return self._complete_run(run_id, outcome.terminal_outcome or "failed", outcome.reason)
+        return self._reload(run_id)
+
+    def cancel(self, run_id: str, *, reason: str, cancelled_by: Literal["user", "runtime"] = "user") -> RunRecord:
+        loaded = self.stores.runs.load(run_id)
+        if loaded is None:
+            raise EngineError(f"run {run_id} not found")
+        revision, record = loaded
+        if record.state is RunState.TERMINAL:
+            raise EngineError(f"run {run_id} is already terminal")
+        cancellation = CancellationRecord(cancelled_by=cancelled_by, reason=reason, occurred_at=_utcnow())
+        produced = dict(record.produced_artifacts)
+        produced["cancellation_record"] = self._store("cancellation_record", cancellation, "runtime")
+        produced["retained_evidence"] = self._retained_evidence_ref(record, produced)
+        self.stores.events.emit(EventType.STAGE_CANCELLED, run_id=run_id, stage_id=record.current_stage)
+        self.stores.runs.update_run(
+            record.model_copy(
+                update={
+                    "state": RunState.RUNNING,
+                    "current_stage": "completion",
+                    "terminal_outcome": "cancelled",
+                    "reason": reason,
+                    "produced_artifacts": produced,
+                }
+            ),
+            expected_revision=revision,
+        )
+        return self._complete_run(run_id, "cancelled", reason)
