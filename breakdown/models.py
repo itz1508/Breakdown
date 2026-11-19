@@ -894,6 +894,8 @@ class CodingBackendResult(StrictModel):
     execution_result: ExecutionResult
     observation: str = Field(min_length=1)
     reported_changed_paths: tuple[str, ...] = ()
+    # Backend-reported usage for budget enforcement (builder accumulates it).
+    usage: TokenUsage | None = None
 
 
 class BackendBinding(StrictModel):

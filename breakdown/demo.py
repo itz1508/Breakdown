@@ -196,4 +196,5 @@ class OfflineDemoCodingBackend:
             execution_result=ExecutionResult.COMPLETED,
             observation="DEMO_CHANGE.md created in sandbox",
             reported_changed_paths=("DEMO_CHANGE.md",),
+            usage=TokenUsage(input_tokens=25, output_tokens=25, tool_calls=1),
         )

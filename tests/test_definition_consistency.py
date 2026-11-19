@@ -102,6 +102,17 @@ def test_digest_algorithm_drift_fails(tmp_path: Path) -> None:
         validate_definition_consistency(definition)
 
 
+def test_processing_plan_activation_drift_fails(tmp_path: Path) -> None:
+    def ghost_plan(raw: dict[str, Any]) -> None:
+        for stage in raw["stages"]:
+            if stage["id"] == "research_approval":
+                stage["processing_plan_activation"]["plan"] = "ghost_plan"
+
+    definition = _mutate(tmp_path, ghost_plan)
+    with pytest.raises(ContractConfigurationError, match="processing_plan_activation"):
+        validate_definition_consistency(definition)
+
+
 def _load_t7b():  # type: ignore[no-untyped-def]
     spec = importlib.util.spec_from_file_location(
         "t7b_harness_final", Path(__file__).resolve().parent / "test_engine_budget_recovery.py"

@@ -95,6 +95,7 @@ class ScriptedCodingBackend:
     async def apply_task(self, request: Any) -> Any:
         outcome = self._outcomes[min(self.calls, len(self._outcomes) - 1)]
         self.calls += 1
+        usage = TokenUsage(input_tokens=10, output_tokens=10, tool_calls=1)
         if outcome == "complete":
             sandbox = Path(request.sandbox_root)
             (sandbox / "src" / "calc.py").write_text(
@@ -105,15 +106,17 @@ class ScriptedCodingBackend:
                 execution_result=ExecutionResult.COMPLETED,
                 observation="subtract implemented in sandbox",
                 reported_changed_paths=("src/calc.py",),
+                usage=usage,
             )
         if outcome == "blocked":
             return CodingBackendResult(
                 execution_result=ExecutionResult.BLOCKED,
                 observation="newly required path discovered",
                 reported_changed_paths=(),
+                usage=usage,
             )
         return CodingBackendResult(
-            execution_result=ExecutionResult.FAILED, observation="task failed", reported_changed_paths=()
+            execution_result=ExecutionResult.FAILED, observation="task failed", reported_changed_paths=(), usage=usage
         )
 
 

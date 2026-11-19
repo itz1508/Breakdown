@@ -529,5 +529,32 @@ def validate_definition_consistency(definition: WorkflowDefinition) -> None:
     if loopback_target is not None and str(loopback_target) != "implementation_planning":
         errors.append("approval_boundary.changes_to_approved_package.return_to must target implementation_planning")
 
+    # processing_plan_activation: the declared plan must be produced by an earlier
+    # stage, activated by runtime, and required by the approve destination.
+    stage_ids = set(definition.stage_ids())
+    for stage in definition.stages:
+        activation = stage.processing_plan_activation
+        if not activation:
+            continue
+        plan_key = str(activation.get("plan") or "")
+        if str(activation.get("activated_by") or "") != "runtime":
+            errors.append(f"{stage.id}: processing_plan_activation.activated_by must be runtime")
+        producers = [
+            other.id for other in definition.stages if plan_key in other.produces and other.order < stage.order
+        ]
+        if not producers:
+            errors.append(
+                f"{stage.id}: processing_plan_activation plan {plan_key!r} is not produced by any earlier stage"
+            )
+        destination = stage.transitions.get("on_approve")
+        if (
+            isinstance(destination, str)
+            and destination in stage_ids
+            and plan_key not in definition.get_stage(destination).requires
+        ):
+            errors.append(
+                f"{stage.id}: activated plan {plan_key!r} is not required by approve destination {destination!r}"
+            )
+
     if errors:
         raise ContractConfigurationError("definition consistency violations: " + "; ".join(errors))

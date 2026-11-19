@@ -18,6 +18,7 @@ from breakdown.models import (
     EventType,
     ExecutionResult,
     RunState,
+    TokenUsage,
 )
 from breakdown.run_store import RunStore
 from breakdown.safety import SafetyBoundary
@@ -194,6 +195,7 @@ class _ScriptedCodingBackend:
             execution_result=ExecutionResult.COMPLETED,
             observation="subtract implemented in sandbox",
             reported_changed_paths=("src/calc.py",),
+            usage=TokenUsage(input_tokens=40, output_tokens=60, tool_calls=2),
         )
 
 
@@ -283,6 +285,12 @@ def test_happy_path_reaches_completion_success(e2e: _E2E) -> None:
     assert completion.completion_outcome == "success"
     assert completion.changed_paths == ("src/calc.py",)
     assert completion.terminal_state == "completed"
+    # Budget counts coding-backend usage too: 4 role activations x 300 tokens
+    # (100 in + 200 out, 1 call each) + builder 100 tokens (40 in + 60 out, 2 calls).
+    assert record.tokens_used == 1300
+    assert record.tool_calls_used == 6
+    assert completion.cost_summary is not None
+    assert completion.cost_summary.tokens_used == 1300
 
 
 def test_event_sequence(e2e: _E2E) -> None:

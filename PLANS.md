@@ -266,8 +266,9 @@ separate binding milestone.
   (role.last_usage) so the engine can accumulate budget.
   🟨 PROPOSAL (guardrail, later adopted as D29): build→plan loopback bounded at 3 build
   attempts (_MAX_BUILD_ATTEMPTS) — yaml declared the edge but no cap; unbounded looping
-  violates recovery discipline. (3) known limitation: coding-backend (builder) usage is not counted
-  toward the budget — CodingBackendResult carries no usage field; role-backend usage only.
+  violates recovery discipline. (3) known limitation (CLOSED in the polish cycle after
+  D29): coding-backend (builder) usage was not counted toward the budget —
+  CodingBackendResult now carries usage and the builder accumulates it.
   10 new test rows (per-stage cap, reserve + threshold event, workflow max tokens,
   tool-call cap, budget boundaries, recovery retry/exhaustion, timeout exhaustion,
   loopback-then-success, build not_valid).
@@ -338,4 +339,22 @@ separate binding milestone.
   consumes the declared edge via _loop_back_edge(); _MAX_BUILD_ATTEMPTS deleted.
   New tests: declared edge without max_loops rejected at load; loopback exhaustion
   (3 blocked builds) routes completion/failed with error_type uncertainty.
+- [x] (2026-11-19) Phase 2 polish cycle — remaining items closed:
+  (1) coding-backend usage now budget-counted: CodingBackendResult.usage field,
+  Builder accumulates per-task usage into last_usage (engine's generic read picks it
+  up; no engine change), demo + test fakes report usage, happy-path test pins the
+  exact run total (4 role activations + builder). Closes the last documented
+  Phase 2 limitation.
+  (2) .env.example gained BREAKDOWN_STATE_ROOT (Settings field added in T9).
+  (3) processing_plan_activation blocks pinned by validate_definition_consistency:
+  declared plan must be produced by an earlier stage, activated_by runtime, and
+  required by the on_approve destination (drift-rejection test added).
+  Documented-only facts (no behavior owed in def-1): the `partial` completion
+  outcome is unreachable by design — cost_budget.on_exceeded explicitly routes
+  terminal_outcome failed and no edge produces partial_build_result; its accepts
+  row is declarative future-proofing. ACTIVITY_UPDATED is a reserved ephemeral
+  event (persistence-tested, never emitted in Phase 2; exists for a future
+  activity feed). Phase 3 (live SDK backends, binding-backed construction, SDK
+  capability eval layer) remains decision-gated: provider choice, credential
+  conventions, and live-assessment pass criteria are required first.
 

@@ -20,10 +20,12 @@ from breakdown.models import (
     BuildTask,
     CheckResult,
     CodingBackendRequest,
+    CodingBackendResult,
     CriterionResult,
     ExecutionResult,
     StageContext,
     TaskResult,
+    TokenUsage,
 )
 from breakdown.roles import RoleOperationError
 
@@ -35,9 +37,12 @@ class Builder:
     def __init__(self, *, backend: CodingBackend, sandbox_root: Path) -> None:
         self._backend = backend
         self._sandbox_root = Path(sandbox_root)
+        # Accumulated coding-backend usage; runtime budget enforcement reads it.
+        self.last_usage: TokenUsage | None = None
 
     async def execute_build(self, input_value: BuildExecutionInput, context: StageContext) -> BuildExecutionOutput:
         _revalidate_bindings(input_value)
+        self.last_usage = None
         ordered = sorted(input_value.implementation_plan.tasks, key=lambda task: task.sequence)
         stop_criteria = (
             frozenset(CriterionResult(value) for value in input_value.stop_on_criterion)
@@ -89,6 +94,7 @@ class Builder:
                     prior_error=prior_error,
                 )
             )
+            self._accumulate_usage(result)
             criterion = _criterion_for(result.execution_result)
             terminal = (
                 criterion is CriterionResult.VALID
@@ -106,6 +112,19 @@ class Builder:
                     attempts=attempts,
                 )
             prior_error = result.observation
+
+    def _accumulate_usage(self, result: CodingBackendResult) -> None:
+        """Sum coding-backend usage across all task attempts of this build."""
+        if result.usage is None:
+            return
+        if self.last_usage is None:
+            self.last_usage = result.usage
+        else:
+            self.last_usage = TokenUsage(
+                input_tokens=self.last_usage.input_tokens + result.usage.input_tokens,
+                output_tokens=self.last_usage.output_tokens + result.usage.output_tokens,
+                tool_calls=self.last_usage.tool_calls + result.usage.tool_calls,
+            )
 
 
 def _criterion_for(result: ExecutionResult) -> CriterionResult:
