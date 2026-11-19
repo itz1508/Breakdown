@@ -174,6 +174,11 @@ def _validate_loop_backs(definition: WorkflowDefinition) -> None:
                 raise WorkflowDefinitionError("loop_back_edges entries must be mappings")
             if edge.get("from") not in stage_ids or edge.get("to") not in stage_ids:
                 raise WorkflowDefinitionError(f"declared loop-back edge does not resolve: {dict(edge)}")
+            max_loops = edge.get("max_loops")
+            if not isinstance(max_loops, int) or max_loops < 1:
+                raise WorkflowDefinitionError(
+                    f"declared loop-back edge {edge.get('from')}->{edge.get('to')} requires a finite max_loops >= 1"
+                )
 
 
 def load_workflow(path: str | Path) -> WorkflowDefinition:
@@ -729,7 +734,13 @@ class WorkflowEngine:
             update["stage_attempts"] = dict(attempts)
         self.stores.runs.update_run(record.model_copy(update=update), expected_revision=revision)
 
-    _MAX_BUILD_ATTEMPTS = 3  # runtime guardrail: the build->plan loopback edge is bounded
+    def _loop_back_edge(self, from_stage: str, to_stage: str) -> Mapping[str, Any]:
+        """The declared loop-back edge between two stages (definition authority)."""
+        declared = self.definition.dependency_validation.get("loop_back_edges") or []
+        for edge in declared:
+            if isinstance(edge, Mapping) and edge.get("from") == from_stage and edge.get("to") == to_stage:
+                return edge
+        raise EngineError(f"no declared loop-back edge {from_stage} -> {to_stage}")
 
     def _loop_back_for_replanning(
         self,
@@ -742,12 +753,15 @@ class WorkflowEngine:
     ) -> None:
         """build_execution loopback edge (newly_required_path_or_plan_contradiction):
         uncertainty returns to implementation_planning; synchronization is prohibited,
-        the sandbox is torn down, and the revised plan requires a new approval."""
+        the sandbox is torn down, and the revised plan requires a new approval.
+        The bound is the edge's declared max_loops (definition authority, D29)."""
+        edge = self._loop_back_edge("build_execution", "implementation_planning")
+        max_loops = int(edge.get("max_loops") or 0)
         self.stores.safety.teardown_sandbox(run_id)
         tokens_used, tool_calls_used = usage
         attempts = dict(record.stage_attempts)
         attempts["build_execution"] = attempt
-        if attempt >= self._MAX_BUILD_ATTEMPTS:
+        if attempt > max_loops:
             self._handle_stage_failure(
                 run_id,
                 revision,

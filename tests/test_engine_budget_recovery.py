@@ -338,3 +338,23 @@ def test_build_not_valid_routes_failed(tmp_path: Path) -> None:
     assert record.reason == "build task returned not_valid"
     assert "synchronization_result" not in record.produced_artifacts
     assert record.stage_attempts["build_execution"] == 1  # build failures route straight to completion
+
+
+def test_build_loopback_exhaustion_routes_failed(tmp_path: Path) -> None:
+    """Declared edge bound (D29): max_loops=2 -> builds 1,2 loop back, build 3 fails the run."""
+    h = Harness(tmp_path, coding_outcomes=("blocked", "blocked", "blocked"))
+    record = h.engine.start_run("request", user_identity="u")
+    run_id = record.run_id
+    for _ in range(4):  # research_approval, plan_approval, then plan_approval after each loopback
+        record = h.engine.advance(run_id)
+        assert record.state is RunState.AWAITING_DECISION
+        h.engine.record_decision(run_id, "approve", user_identity="u")
+    record = h.engine.advance(run_id)  # build #3: attempt 3 > max_loops 2 -> failed
+    assert record.state is RunState.TERMINAL
+    assert record.terminal_outcome == "failed"
+    assert "loopback limit" in record.reason
+    assert record.stage_attempts["build_execution"] == 3
+    assert "synchronization_result" not in record.produced_artifacts
+    failure_ref = record.produced_artifacts["failure_record"]
+    failure = h.artifacts.get_model(FailureRecord, failure_ref.artifact_key, failure_ref.revision)
+    assert failure.error_type == "uncertainty"

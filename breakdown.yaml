@@ -234,6 +234,7 @@ dependency_validation:
   - from: build_execution
     to: implementation_planning
     when: newly_required_path_or_plan_contradiction
+    max_loops: 2
     criterion_result: uncertainty
     synchronization: prohibited
     requires_new_approval: true

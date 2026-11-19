@@ -167,9 +167,18 @@ def test_loopback_from_role_stage_rejected(tmp_path: Path, base_data: dict[str, 
 def test_declared_loopback_edge_must_resolve(tmp_path: Path, base_data: dict[str, Any]) -> None:
     data = copy.deepcopy(base_data)
     data["dependency_validation"]["loop_back_edges"].append(
-        {"from": "plan_approval", "to": "ghost_stage", "when": "request_changes"}
+        {"from": "plan_approval", "to": "ghost_stage", "when": "request_changes", "max_loops": 1}
     )
     with pytest.raises(WorkflowDefinitionError):
+        load_workflow(_write(tmp_path, data))
+
+
+def test_declared_loopback_edge_requires_max_loops(tmp_path: Path, base_data: dict[str, Any]) -> None:
+    data = copy.deepcopy(base_data)
+    data["dependency_validation"]["loop_back_edges"].append(
+        {"from": "build_execution", "to": "implementation_planning", "when": "uncertainty"}
+    )
+    with pytest.raises(WorkflowDefinitionError, match="max_loops"):
         load_workflow(_write(tmp_path, data))
 
 

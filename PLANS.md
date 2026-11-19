@@ -264,9 +264,9 @@ separate binding milestone.
   the ImplementationPlan model revision — builder revision check broke on replanning; now
   model revision. (2) roles surface backend usage via generate_structured helper
   (role.last_usage) so the engine can accumulate budget.
-  🟨 PROPOSAL (guardrail): build→plan loopback bounded at 3 build attempts
-  (_MAX_BUILD_ATTEMPTS) — yaml declares the edge but no cap; unbounded looping violates
-  recovery discipline. (3) known limitation: coding-backend (builder) usage is not counted
+  🟨 PROPOSAL (guardrail, later adopted as D29): build→plan loopback bounded at 3 build
+  attempts (_MAX_BUILD_ATTEMPTS) — yaml declared the edge but no cap; unbounded looping
+  violates recovery discipline. (3) known limitation: coding-backend (builder) usage is not counted
   toward the budget — CodingBackendResult carries no usage field; role-backend usage only.
   10 new test rows (per-stage cap, reserve + threshold event, workflow max tokens,
   tool-call cap, budget boundaries, recovery retry/exhaustion, timeout exhaustion,
@@ -325,7 +325,17 @@ separate binding milestone.
   on_budget_exhausted/on_failure preserve lists (runtime preserves the superset of all
   produced artifacts + explicit records). Modeled but unused by def-1: budget_reserve,
   computation_timeout_seconds. G1–G8 all closed (Phase 1 gap fixes + P2-T5 approvals).
-  D11–D28 honored as recorded in the cycle entries; T7b loopback guardrail remains a
-  🟨 proposal pending user sign-off. 9 new tests (7 consistency-drift rows, stop-criterion
+  D11–D28 honored as recorded in the cycle entries; the T7b loopback guardrail was
+  superseded by D29 (see below). 9 new tests (7 consistency-drift rows, stop-criterion
   flow, on_exceeded policy).
+- [x] (2026-11-18) D29 — loopback bound is definition-owned (user-approved plan):
+  breakdown.yaml build_execution→implementation_planning edge now declares max_loops: 2
+  (edge-traversal semantics, consistent with plan_approval's max_loops consumed by
+  approvals; preserves the previously tested behavior of 3 total build attempts).
+  _validate_loop_backs now requires a finite max_loops >= 1 on EVERY declared
+  dependency_validation.loop_back_edges entry (closes the "unbounded loop declarable"
+  enforcement gap the hard-coded constant was masking). Engine _loop_back_for_replanning
+  consumes the declared edge via _loop_back_edge(); _MAX_BUILD_ATTEMPTS deleted.
+  New tests: declared edge without max_loops rejected at load; loopback exhaustion
+  (3 blocked builds) routes completion/failed with error_type uncertainty.
 
