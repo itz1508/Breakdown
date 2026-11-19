@@ -447,7 +447,17 @@ def build_input(operation: str) -> Any:
     raise KeyError(f"no input builder for operation {operation!r}")
 
 
-def make_roles(fixture: Path, profile: str) -> dict[str, Any]:
+def make_roles(fixture: Path, profile: str, live_backends: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    if live_backends is not None:
+        return {
+            "auditor": Auditor(backend=live_backends["auditor"], tools=RoleToolkit(role="auditor", root=fixture)),
+            "researcher": Researcher(
+                backend=live_backends["researcher"], tools=RoleToolkit(role="researcher", root=fixture)
+            ),
+            "coder": Coder(backend=live_backends["coder"], tools=RoleToolkit(role="coder", root=fixture)),
+            "planner": Planner(backend=live_backends["planner"], tools=RoleToolkit(role="planner", root=fixture)),
+            "builder": Builder(backend=live_backends["builder"], sandbox_root=fixture / ".sandbox"),
+        }
     backend = ScriptedBackend(profile_payload(profile))
     coding_result = ExecutionResult.COMPLETED if profile == "build_completed" else ExecutionResult.FAILED
     return {
@@ -459,13 +469,18 @@ def make_roles(fixture: Path, profile: str) -> dict[str, Any]:
     }
 
 
-def run_case(case: Mapping[str, Any], fixture: Path, scoreboard: BlockingScoreboard) -> bool:
+def run_case(
+    case: Mapping[str, Any],
+    fixture: Path,
+    scoreboard: BlockingScoreboard,
+    live_backends: Mapping[str, Any] | None = None,
+) -> bool:
     role_name = str(case["role"])
     operation = str(case["operation"])
     profile = str(case["profile"])
     expect_valid = bool(case.get("expect", {}).get("output_valid", True))
     blocks = tuple(case.get("blocks", []))
-    role = make_roles(fixture, profile)[role_name]
+    role = make_roles(fixture, profile, live_backends)[role_name]
     context = StageContext(
         run=RunRef(
             run_id="run-eval",
@@ -573,29 +588,72 @@ def load_cases() -> list[dict[str, Any]]:
     return cases
 
 
+def _build_live_eval_backends(fixture: Path) -> dict[str, Any]:
+    """Live backends from environment settings (Databricks/custom/OpenAI)."""
+    from breakdown.live_backend import (
+        OpenAICompatibleCodingBackend,
+        OpenAICompatibleRoleBackend,
+        build_openai_client,
+        resolve_model,
+    )
+    from breakdown.models import Settings
+
+    settings = Settings()
+    client = build_openai_client(settings)
+    backends: dict[str, Any] = {}
+    for role in ("auditor", "researcher", "coder", "planner"):
+        backends[role] = OpenAICompatibleRoleBackend(
+            client=client,
+            model=resolve_model(settings, role),
+            tool_root=fixture,
+            max_tool_rounds=settings.api_max_tool_rounds,
+        )
+    backends["builder"] = OpenAICompatibleCodingBackend(client=client, model=resolve_model(settings, "builder"))
+    return backends
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="evals")
-    parser.add_argument(
-        "--offline", action="store_true", required=True, help="Phase 1 supports offline evaluation only"
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--offline", action="store_true", help="scripted backends (default evidence path)")
+    mode.add_argument(
+        "--live",
+        action="store_true",
+        help="positive role cases against the live OpenAI-compatible API from environment settings",
     )
-    parser.parse_args(argv)
+    args = parser.parse_args(argv)
     with tempfile.TemporaryDirectory(prefix="breakdown-eval-") as temporary:
         base = Path(temporary)
         fixture = build_fixture_repo(base / "role-fixture")
+        live_backends: Mapping[str, Any] | None = None
+        if args.live:
+            from breakdown.live_backend import LiveBackendError
+
+            try:
+                live_backends = _build_live_eval_backends(fixture)
+            except LiveBackendError as exc:
+                print(f"live evaluation configuration error: {exc}")
+                return 1
         scoreboard = BlockingScoreboard()
         cases = load_cases()
         passed = 0
+        skipped = 0
         for case in cases:
             if str(case.get("harness", "role")) == "safety":
                 passed += run_safety_case(case, base, scoreboard)
+            elif live_backends is not None and not bool(case.get("expect", {}).get("output_valid", True)):
+                skipped += 1
+                print(f"[skip] {case['role']}.{case['operation']} <- {case['profile']}: adversarial case, live mode")
             else:
-                passed += run_case(case, fixture, scoreboard)
-        print(f"\ncases: {passed}/{len(cases)} passed")
+                passed += run_case(case, fixture, scoreboard, live_backends)
+        scored_cases = len(cases) - skipped
+        print(f"\ncases: {passed}/{scored_cases} passed ({skipped} skipped)")
         print("blocking zeros:")
-        failures = scoreboard.report()
-    if failures or passed != len(cases):
+        failures = scoreboard.report(require_all_scored=live_backends is None)
+    if failures or passed != scored_cases:
         return 1
-    print("offline evaluation: all scored blocking zeros hold")
+    suffix = "live" if args.live else "offline"
+    print(f"{suffix} evaluation: all scored blocking zeros hold")
     return 0
 
 

@@ -64,6 +64,7 @@ def build_completion_record(
     resulting_source_checkpoint: ArtifactRef | None = None,
     tokens_used: int = 0,
     tool_calls_used: int = 0,
+    stage_usage: Mapping[str, CostSummary] | None = None,
     completed_at: datetime,
 ) -> CompletionRecord:
     """Assemble the authoritative CompletionRecord from durable run facts."""
@@ -75,7 +76,11 @@ def build_completion_record(
         remaining_work=tuple(remaining_work),
         retained_evidence=tuple(retained_evidence),
         resulting_source_checkpoint=resulting_source_checkpoint,
-        cost_summary=CostSummary(tokens_used=tokens_used, tool_calls_used=tool_calls_used),
+        cost_summary=CostSummary(
+            tokens_used=tokens_used,
+            tool_calls_used=tool_calls_used,
+            by_stage={sid: summary for sid, summary in sorted((stage_usage or {}).items())},
+        ),
         terminal_state=terminal_state_for(outcome),
         completed_at=completed_at,
     )

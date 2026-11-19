@@ -22,7 +22,7 @@ from typing import Any
 
 from breakdown.approvals import ApprovalError
 from breakdown.bindings import BindingNotValid
-from breakdown.bootstrap import BootstrapError, Runtime, build_runtime
+from breakdown.bootstrap import BootstrapError, Runtime, build_live_backends, build_runtime
 from breakdown.contracts import (
     RUNTIME_OWNED_KEYS,
     ContractConfigurationError,
@@ -96,7 +96,12 @@ def _add_runtime_args(parser: argparse.ArgumentParser, *, mutating: bool) -> Non
         parser.add_argument(
             "--offline-demo",
             action="store_true",
-            help="use the scripted offline backends (Phase 2 ships no live SDK backends)",
+            help="use the scripted offline backends (no live API needed)",
+        )
+        parser.add_argument(
+            "--live",
+            action="store_true",
+            help="use live OpenAI-compatible backends (BREAKDOWN_API_BASE_URL/API_KEY/MODEL; bindings required)",
         )
         parser.add_argument("--force-unlock", action="store_true", help="take over a known-stale lockfile")
 
@@ -121,17 +126,43 @@ def _demo_request_text(settings: Settings, run_id: str | None, fallback: str) ->
 
 
 def _build_runtime(args: argparse.Namespace, settings: Settings, run_id: str | None, fallback_text: str) -> Runtime:
-    if not getattr(args, "offline_demo", False):
-        raise BootstrapError(
-            "Phase 2 ships offline backends only; pass --offline-demo "
-            "(live SDK backends arrive with binding-backed construction)"
-        )
+    offline_demo = getattr(args, "offline_demo", False)
+    live = getattr(args, "live", False)
+    if offline_demo and live:
+        raise BootstrapError("--offline-demo and --live are mutually exclusive")
+    if live:
+        return _build_live_runtime(args, settings)
+    if not offline_demo:
+        raise BootstrapError("no backend selected: pass --offline-demo (scripted) or --live (OpenAI-compatible API)")
     text = _demo_request_text(settings, run_id, fallback_text)
     return build_runtime(
         settings,
         role_backend=OfflineDemoRoleBackend(text),
         coding_backend=OfflineDemoCodingBackend(text),
         offline_demo=True,
+        force_unlock=getattr(args, "force_unlock", False),
+    )
+
+
+def _build_live_runtime(args: argparse.Namespace, settings: Settings) -> Runtime:
+    """Live path (D30/D33): bindings are mandatory evidence — produce them by
+    running `evals/run.py --live` against the candidate endpoint first."""
+    from breakdown.live_backend import LiveBackendError
+
+    if not settings.backend_bindings_path or not Path(settings.backend_bindings_path).exists():
+        raise BootstrapError(
+            "live mode requires validated backend bindings (--bindings): run "
+            "'python evals/run.py --live' against the candidate endpoint, then record "
+            "BackendBinding records (see bindings.example.json)"
+        )
+    try:
+        role_backends, coding_backend = build_live_backends(settings)
+    except LiveBackendError as exc:
+        raise BootstrapError(str(exc)) from exc
+    return build_runtime(
+        settings,
+        role_backends=role_backends,
+        coding_backend=coding_backend,
         force_unlock=getattr(args, "force_unlock", False),
     )
 

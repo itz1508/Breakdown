@@ -19,7 +19,7 @@ from pathlib import Path
 
 from breakdown.approvals import ApprovalManager
 from breakdown.artifact_store import ArtifactStore
-from breakdown.bindings import BackendBindingStore, validate_binding
+from breakdown.bindings import BackendBindingStore, BindingNotValid, validate_binding
 from breakdown.contracts import (
     CodingBackend,
     ContractRegistry,
@@ -30,7 +30,7 @@ from breakdown.contracts import (
 )
 from breakdown.engine import EngineStores, WorkflowEngine, load_workflow
 from breakdown.events import EventStore
-from breakdown.models import Settings, WorkflowDefinition
+from breakdown.models import ContractKind, Settings, WorkflowDefinition
 from breakdown.roles import RoleToolkit
 from breakdown.roles.auditor import Auditor
 from breakdown.roles.builder import Builder
@@ -104,6 +104,25 @@ class BootstrapError(RuntimeError):
     """Runtime construction failed (locked state or invalid configuration)."""
 
 
+def _validate_binding_coverage(definition: WorkflowDefinition, bindings: BackendBindingStore) -> None:
+    """Every role that owns a workflow stage must have a binding whose
+    permitted_operations cover that stage's operation (data-driven from the
+    definition; D33). The builder's coding backend is not a role binding."""
+    role_operations: dict[str, set[str]] = {}
+    for stage in definition.stages:
+        if stage.kind is ContractKind.ROLE and stage.owner != "builder":
+            role_operations.setdefault(stage.owner, set()).add(stage.operation)
+    for role in sorted(role_operations):
+        binding = bindings.for_role(role)
+        if binding is None:
+            raise BindingNotValid(f"role {role!r} has no backend binding")
+        missing = role_operations[role] - set(binding.permitted_operations)
+        if missing:
+            raise BindingNotValid(
+                f"binding {binding.binding_id}: permitted_operations missing {sorted(missing)} for role {role!r}"
+            )
+
+
 class LockfileGuard:
     """Single-writer guard for the state directory (D18).
 
@@ -156,7 +175,8 @@ class Runtime:
 def build_runtime(
     settings: Settings,
     *,
-    role_backend: RoleBackend,
+    role_backend: RoleBackend | None = None,
+    role_backends: Mapping[str, RoleBackend] | None = None,
     coding_backend: CodingBackend,
     offline_demo: bool = False,
     force_unlock: bool = False,
@@ -166,6 +186,8 @@ def build_runtime(
     Backends are injected by the caller and are only constructed from
     approved, validation-passing binding records; ``offline_demo`` selects
     the scripted offline path (D26) and skips binding validation.
+    ``role_backends`` maps role -> backend (two-model-team seam, D32);
+    roles not listed fall back to ``role_backend``.
     """
     definition = load_workflow(settings.workflow_path)
     contracts = build_contract_registry(definition)
@@ -175,6 +197,8 @@ def build_runtime(
     if not offline_demo:
         for binding in bindings.all():
             validate_binding(binding)
+        if bindings.all():
+            _validate_binding_coverage(definition, bindings)
     target_root = settings.target_repo.resolve()
     state_root = (target_root / settings.state_root).resolve()
     state_root.mkdir(parents=True, exist_ok=True)
@@ -191,14 +215,20 @@ def build_runtime(
     )
 
     def role_factory(sandbox: Path | None) -> Mapping[str, object]:
+        def backend_for(role: str) -> RoleBackend:
+            selected = (role_backends or {}).get(role) or role_backend
+            if selected is None:
+                raise BootstrapError(f"no backend available for role {role!r}")
+            return selected
+
         toolkits = {
             role: RoleToolkit(role=role, root=target_root) for role in ("auditor", "researcher", "coder", "planner")
         }
-        coder = Coder(backend=role_backend, tools=toolkits["coder"])
+        coder = Coder(backend=backend_for("coder"), tools=toolkits["coder"])
         return {
-            "auditor": Auditor(backend=role_backend, tools=toolkits["auditor"], coder=coder),
-            "researcher": Researcher(backend=role_backend, tools=toolkits["researcher"]),
-            "planner": Planner(backend=role_backend, tools=toolkits["planner"]),
+            "auditor": Auditor(backend=backend_for("auditor"), tools=toolkits["auditor"], coder=coder),
+            "researcher": Researcher(backend=backend_for("researcher"), tools=toolkits["researcher"]),
+            "planner": Planner(backend=backend_for("planner"), tools=toolkits["planner"]),
             "builder": Builder(backend=coding_backend, sandbox_root=sandbox or target_root),
         }
 
@@ -219,3 +249,27 @@ def build_runtime(
         bindings=bindings,
         settings=settings,
     )
+
+
+def build_live_backends(settings: Settings) -> tuple[dict[str, RoleBackend], CodingBackend]:
+    """Live OpenAI-compatible backends (D30/D32): one shared client, per-role
+    model tiers, canonical tool loop rooted at the target repository."""
+    from breakdown.live_backend import (
+        OpenAICompatibleCodingBackend,
+        OpenAICompatibleRoleBackend,
+        build_openai_client,
+        resolve_model,
+    )
+
+    client = build_openai_client(settings)
+    tool_root = settings.target_repo.resolve()
+    role_backends: dict[str, RoleBackend] = {}
+    for role in ("auditor", "researcher", "coder", "planner"):
+        role_backends[role] = OpenAICompatibleRoleBackend(
+            client=client,
+            model=resolve_model(settings, role),
+            tool_root=tool_root,
+            max_tool_rounds=settings.api_max_tool_rounds,
+        )
+    coding: CodingBackend = OpenAICompatibleCodingBackend(client=client, model=resolve_model(settings, "builder"))
+    return role_backends, coding

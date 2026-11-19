@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -101,7 +102,9 @@ def test_build_runtime_validates_bindings_unless_offline_demo(tmp_path: Path) ->
 
 def _cli(tmp_path: Path, *args: str, target: Path | None = None) -> subprocess.CompletedProcess[str]:
     cmd = [sys.executable, "-m", "breakdown", *args]
-    return subprocess.run(cmd, cwd=REPO_ROOT, capture_output=True, text=True, timeout=120)
+    # Sanitized env: ambient BREAKDOWN_* settings must never influence test runs.
+    env = {key: value for key, value in os.environ.items() if not key.startswith("BREAKDOWN_")}
+    return subprocess.run(cmd, cwd=REPO_ROOT, capture_output=True, text=True, timeout=120, env=env)
 
 
 def test_cli_check_still_green() -> None:
@@ -200,3 +203,50 @@ def test_cli_lock_blocks_concurrent_process(tmp_path: Path) -> None:
     r2 = _cli(tmp_path, "run", "demo", *common, "--force-unlock")
     assert r2.returncode == 0, r2.stdout + r2.stderr
     assert "state: awaiting_decision" in r2.stdout
+
+
+def test_cli_live_requires_bindings(tmp_path: Path) -> None:
+    target = tmp_path / "target"
+    target.mkdir()
+    result = _cli(tmp_path, "run", "demo", "--workflow", str(WORKFLOW), "--target", str(target), "--live")
+    assert result.returncode == 1
+    assert "bindings" in result.stdout
+
+
+def test_cli_live_and_offline_demo_mutually_exclusive(tmp_path: Path) -> None:
+    target = tmp_path / "target"
+    target.mkdir()
+    result = _cli(
+        tmp_path,
+        "run",
+        "demo",
+        "--workflow",
+        str(WORKFLOW),
+        "--target",
+        str(target),
+        "--live",
+        "--offline-demo",
+    )
+    assert result.returncode == 1
+    assert "mutually exclusive" in result.stdout
+
+
+def test_cli_live_names_missing_settings(tmp_path: Path) -> None:
+    target = tmp_path / "target"
+    target.mkdir()
+    bindings = tmp_path / "bindings.json"
+    bindings.write_text("[]", encoding="utf-8")
+    result = _cli(
+        tmp_path,
+        "run",
+        "demo",
+        "--workflow",
+        str(WORKFLOW),
+        "--target",
+        str(target),
+        "--live",
+        "--bindings",
+        str(bindings),
+    )
+    assert result.returncode == 1
+    assert "BREAKDOWN_API_BASE_URL" in result.stdout

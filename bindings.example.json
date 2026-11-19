@@ -1,0 +1,47 @@
+[
+  {
+    "binding_id": "binding-auditor-openai-compatible",
+    "role": "auditor",
+    "implementation": "openai_compatible",
+    "package_name": "openai",
+    "installed_version": "2.54.0",
+    "evaluation_ref": {"artifact_key": "backend_evaluation", "digest": "REPLACE_WITH_EVALUATION_DIGEST"},
+    "evaluation_status": "completed",
+    "permitted_operations": ["create_research_proposal", "review_research_findings"],
+    "required_capabilities": ["structured_output", "tool_calls", "tool_loop", "usage_data"],
+    "live_required": true,
+    "live_status": "valid",
+    "binding_revision": 1,
+    "approved_at": "2026-11-19T00:00:00+00:00"
+  },
+  {
+    "binding_id": "binding-researcher-openai-compatible",
+    "role": "researcher",
+    "implementation": "openai_compatible",
+    "package_name": "openai",
+    "installed_version": "2.54.0",
+    "evaluation_ref": {"artifact_key": "backend_evaluation", "digest": "REPLACE_WITH_EVALUATION_DIGEST"},
+    "evaluation_status": "completed",
+    "permitted_operations": ["execute_research"],
+    "required_capabilities": ["structured_output", "tool_calls", "tool_loop", "usage_data"],
+    "live_required": true,
+    "live_status": "valid",
+    "binding_revision": 1,
+    "approved_at": "2026-11-19T00:00:00+00:00"
+  },
+  {
+    "binding_id": "binding-planner-openai-compatible",
+    "role": "planner",
+    "implementation": "openai_compatible",
+    "package_name": "openai",
+    "installed_version": "2.54.0",
+    "evaluation_ref": {"artifact_key": "backend_evaluation", "digest": "REPLACE_WITH_EVALUATION_DIGEST"},
+    "evaluation_status": "completed",
+    "permitted_operations": ["create_implementation_plan"],
+    "required_capabilities": ["structured_output", "tool_calls", "tool_loop", "usage_data"],
+    "live_required": true,
+    "live_status": "valid",
+    "binding_revision": 1,
+    "approved_at": "2026-11-19T00:00:00+00:00"
+  }
+]

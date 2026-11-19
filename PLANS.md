@@ -358,3 +358,49 @@ separate binding milestone.
   capability eval layer) remains decision-gated: provider choice, credential
   conventions, and live-assessment pass criteria are required first.
 
+## Phase 3a — orchestration economics + live OpenAI-compatible backends
+
+Source patterns: Anthropic cookbooks "plan big, execute small" (two-model
+team economics, per-thread usage metering, session budget as fan-out
+guardrail), "multiagent orchestration" (subagents/threads/advisor), "async
+multi-agent orchestration" (hub messaging, spawn/collect/dismiss lifecycles).
+CMA's platform API is Anthropic-only; per user direction the patterns are
+rebuilt on our own orchestrator (the engine) with live model access through
+OpenAI-compatible endpoints (Databricks key or custom API key).
+
+- [x] (2026-11-19) D30 — OpenAI-compatible adapter over CMA SDK: live backends
+  speak any /chat/completions endpoint (Databricks Model Serving, custom
+  gateway, OpenAI); structured outputs via response_format json_schema with
+  prompt-JSON fallback; bounded canonical tool loop (dispatch_tool, allowlist
+  enforced twice: advertised schemas + per-call check); usage mapped into
+  TokenUsage. New dependency: openai>=1.50,<3 (resolved 2.54.0).
+- [x] (2026-11-19) D31 — per-stage cost attribution (per-thread metering
+  pattern): RunRecord.stage_usage accumulates per activation (retries and
+  loopbacks add to the stage; unreported usage is never invented),
+  STAGE_COMPLETED events carry per-activation tokens/tool_calls,
+  CostSummary.by_stage projects into the completion record, budget_exhausted
+  records snapshot the attribution, reports render a stage-cost table.
+- [x] (2026-11-19) D32 — per-role backend seam (two-model team pattern):
+  build_runtime(role_backends=...) routes each role to its own backend with
+  shared fallback; per-role model tiers via BREAKDOWN_MODEL_<ROLE>. Advisor
+  pattern already implemented (auditor's bounded coder sub-role). Hub
+  peer-messaging rejected by handoff_rules (roles never invoke roles).
+- [x] (2026-11-19) D33 — live path requires validated bindings: CLI --live
+  demands a bindings file; coverage check is data-driven from the definition
+  (every ROLE stage owner needs a binding whose permitted_operations cover
+  its operation). Evidence flow: scripts/live_probe.py -> evals --live ->
+  BackendBinding records -> CLI --live. bindings.example.json templates the
+  records (live_status valid, openai package version pinned).
+- [x] (2026-11-19) D34 — live coding backend is sandbox-confined by
+  construction (writes only declared target paths, traversal-checked) AND
+  still gated by the safety boundary downstream (detect/authorize/sync).
+  Overreach attempts fail the task and write nothing.
+- Deferred (Phase 3b): parallel worker fan-out (def-1 declares
+  execution_order sequential), streaming/resume/hooks capabilities, CMA
+  interop, decomposition-audit eval zero (cookbook caveat: "the facts were
+  audited; the question decomposition wasn't").
+- Tests: 6 stage-usage rows, 10 live-backend rows over httpx.MockTransport
+  (no network in CI), 5 bootstrap seam/coverage rows, 3 CLI --live error
+  rows. Full offline gate green.
+
+

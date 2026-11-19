@@ -47,6 +47,11 @@ def render_run_report(record: RunRecord, events: Sequence[WorkflowEvent] = ()) -
         lines += ["", "## Stage attempts", ""]
         for stage_id in sorted(record.stage_attempts):
             lines.append(f"- {stage_id}: {record.stage_attempts[stage_id]}")
+    if record.stage_usage:
+        lines += ["", "## Stage cost", ""]
+        for stage_id in sorted(record.stage_usage):
+            summary = record.stage_usage[stage_id]
+            lines.append(f"- {stage_id}: {summary.tokens_used} tokens, {summary.tool_calls_used} tool calls")
     if events:
         counts: dict[str, int] = {}
         for event in events:

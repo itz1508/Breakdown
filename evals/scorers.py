@@ -32,14 +32,17 @@ class BlockingScoreboard:
         if detail:
             print(f"    violation[{zero}]: {detail}")
 
-    def report(self) -> int:
+    def report(self, require_all_scored: bool = True) -> int:
         failures = 0
         for name in BLOCKING_ZEROS:
             count = self._violations[name]
             if name not in self._scored:
-                # A zero with no exercising case can never count as holding.
-                print(f"  {name}: NOT_SCORED (no case exercises this zero)")
-                failures += 1
+                if require_all_scored:
+                    # A zero with no exercising case can never count as holding.
+                    print(f"  {name}: NOT_SCORED (no case exercises this zero)")
+                    failures += 1
+                else:
+                    print(f"  {name}: not_scored (adversarial cases skipped in this mode)")
                 continue
             status = "0 violations" if count == 0 else f"{count} VIOLATIONS"
             print(f"  {name}: {status}")

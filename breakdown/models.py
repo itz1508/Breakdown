@@ -23,7 +23,7 @@ from enum import StrEnum
 from pathlib import Path, PurePosixPath
 from typing import Any, Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 SCHEMA_VERSION = "1"
@@ -159,6 +159,16 @@ class Settings(BaseSettings):
     target_repo: Path = Path(".")
     state_root: Path = Path(".breakdown")
     backend_bindings_path: Path | None = None
+    # Live OpenAI-compatible API (Databricks Model Serving, custom gateway,
+    # or OpenAI). Secrets stay SecretStr: never logged, never persisted.
+    api_base_url: str | None = None
+    api_key: SecretStr | None = None
+    model: str | None = None
+    model_auditor: str | None = None
+    model_researcher: str | None = None
+    model_coder: str | None = None
+    model_planner: str | None = None
+    api_max_tool_rounds: int = Field(default=8, ge=1)
 
 
 class InitialRequest(StrictModel):
@@ -769,6 +779,8 @@ class PendingDecision(StrictModel):
 class CostSummary(StrictModel):
     tokens_used: int = Field(default=0, ge=0)
     tool_calls_used: int = Field(default=0, ge=0)
+    # Per-stage attribution projection (completion-time; leaves are empty).
+    by_stage: Mapping[str, CostSummary] = Field(default_factory=dict)
 
 
 class CompletionInput(StrictModel):
@@ -829,6 +841,7 @@ class RunRecord(StrictModel):
     state: RunState = RunState.CREATED
     current_stage: str | None = None
     stage_attempts: Mapping[str, int] = Field(default_factory=dict)
+    stage_usage: Mapping[str, CostSummary] = Field(default_factory=dict)
     loop_counters: Mapping[str, int] = Field(default_factory=dict)
     tokens_used: int = Field(default=0, ge=0)
     tool_calls_used: int = Field(default=0, ge=0)

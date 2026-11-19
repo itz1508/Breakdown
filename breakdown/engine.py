@@ -48,6 +48,7 @@ from breakdown.models import (
     CheckResult,
     ClassifiedFinding,
     ContractKind,
+    CostSummary,
     CriterionResult,
     EventType,
     FailureRecord,
@@ -383,6 +384,7 @@ class WorkflowEngine:
         usage = getattr(role_obj, "last_usage", None) if role_obj is not None else None
         tokens_used = record.tokens_used + (usage.input_tokens + usage.output_tokens if usage is not None else 0)
         tool_calls_used = record.tool_calls_used + (usage.tool_calls if usage is not None else 0)
+        stage_usage = self._add_stage_usage(record.stage_usage, stage_id, usage)
         self._maybe_emit_cost_threshold(run_id, stage_id, tokens_before, tokens_used)
         if result.criterion is CriterionResult.UNCERTAINTY and stage_id != "build_execution":
             # D27: uncertainty outside build routes to completion/failed without recovery.
@@ -396,6 +398,7 @@ class WorkflowEngine:
                 allow_recovery=False,
                 attempt=attempt,
                 usage=(tokens_used, tool_calls_used),
+                stage_usage=stage_usage,
             )
             return
         if result.criterion is not CriterionResult.VALID:
@@ -407,6 +410,7 @@ class WorkflowEngine:
                 result.reason or "stage criterion not valid",
                 attempt=attempt,
                 usage=(tokens_used, tool_calls_used),
+                stage_usage=stage_usage,
             )
             return
         produced = dict(record.produced_artifacts)
@@ -433,7 +437,7 @@ class WorkflowEngine:
             )
             if CriterionResult.UNCERTAINTY in criteria:
                 # Loopback edge: newly required path or plan contradiction.
-                self._loop_back_for_replanning(run_id, revision, record, produced, attempt, usage_totals)
+                self._loop_back_for_replanning(run_id, revision, record, produced, attempt, usage_totals, stage_usage)
                 return
             if CriterionResult.NOT_VALID in criteria:
                 failure_reason = "build task returned not_valid"
@@ -451,6 +455,7 @@ class WorkflowEngine:
                     produced=produced,
                     attempts=attempts,
                     usage=usage_totals,
+                    stage_usage=stage_usage,
                 )
                 return
         if stage_id == "implementation_planning" and failure_reason is None:
@@ -468,9 +473,18 @@ class WorkflowEngine:
                 attempt=attempt,
                 produced=produced,
                 usage=usage_totals,
+                stage_usage=stage_usage,
             )
             return
-        self.stores.events.emit(EventType.STAGE_COMPLETED, run_id=run_id, stage_id=stage_id)
+        self.stores.events.emit(
+            EventType.STAGE_COMPLETED,
+            run_id=run_id,
+            stage_id=stage_id,
+            payload={
+                "tokens": usage.input_tokens + usage.output_tokens if usage is not None else 0,
+                "tool_calls": usage.tool_calls if usage is not None else 0,
+            },
+        )
         next_stage = resolve_next_stage(self.definition, stage_id)
         if next_stage is None:
             raise EngineError(f"stage {stage_id} has no forward transition")
@@ -481,6 +495,7 @@ class WorkflowEngine:
                     "current_stage": next_stage,
                     "produced_artifacts": produced,
                     "stage_attempts": attempts,
+                    "stage_usage": stage_usage,
                     "tokens_used": tokens_used,
                     "tool_calls_used": tool_calls_used,
                 }
@@ -645,6 +660,20 @@ class WorkflowEngine:
         self.stores.safety.teardown_sandbox(run_id)
         return None
 
+    @staticmethod
+    def _add_stage_usage(
+        stage_usage: Mapping[str, CostSummary], stage_id: str, usage: TokenUsage | None
+    ) -> dict[str, CostSummary]:
+        """Per-stage cost attribution; retries and loopbacks accumulate into the stage."""
+        updated = dict(stage_usage)
+        if usage is None:
+            return updated
+        prior = updated.get(stage_id)
+        tokens = (prior.tokens_used if prior is not None else 0) + usage.input_tokens + usage.output_tokens
+        calls = (prior.tool_calls_used if prior is not None else 0) + usage.tool_calls
+        updated[stage_id] = CostSummary(tokens_used=tokens, tool_calls_used=calls)
+        return updated
+
     def _budget_limits(self) -> tuple[int, int, int]:
         """cost_budget numbers, derived from the pinned definition (never redeclared)."""
         budget = self.definition.cost_budget
@@ -696,10 +725,12 @@ class WorkflowEngine:
         produced: Mapping[str, ArtifactRef] | None = None,
         attempts: Mapping[str, int] | None = None,
         usage: tuple[int, int] | None = None,
+        stage_usage: Mapping[str, CostSummary] | None = None,
     ) -> None:
         """cost_budget.on_exceeded: route completion with the terminal outcome and
         reason declared by the definition; artifacts produced so far are preserved."""
         tokens_used, tool_calls_used = usage if usage is not None else (record.tokens_used, record.tool_calls_used)
+        merged_usage = dict(stage_usage if stage_usage is not None else record.stage_usage)
         on_exceeded = self.definition.cost_budget.get("on_exceeded") or {}
         terminal_outcome = str(on_exceeded.get("terminal_outcome") or "failed")
         reason = str(on_exceeded.get("reason") or "budget_exhausted")
@@ -710,7 +741,17 @@ class WorkflowEngine:
         merged["failure_record"] = self._store("failure_record", failure, stage_id)
         merged["budget_exhausted_record"] = self._store(
             "budget_exhausted_record",
-            StoredValue(value={"detail": detail, "tokens_used": tokens_used, "tool_calls_used": tool_calls_used}),
+            StoredValue(
+                value={
+                    "detail": detail,
+                    "tokens_used": tokens_used,
+                    "tool_calls_used": tool_calls_used,
+                    "stage_usage": {
+                        sid: {"tokens_used": summary.tokens_used, "tool_calls_used": summary.tool_calls_used}
+                        for sid, summary in sorted(merged_usage.items())
+                    },
+                }
+            ),
             stage_id,
         )
         merged["retained_evidence"] = self._retained_evidence_ref(record, merged)
@@ -727,6 +768,7 @@ class WorkflowEngine:
             "reason": reason,
             "produced_artifacts": merged,
             "resume_point": stage_id,
+            "stage_usage": merged_usage,
             "tokens_used": tokens_used,
             "tool_calls_used": tool_calls_used,
         }
@@ -750,6 +792,7 @@ class WorkflowEngine:
         produced: Mapping[str, ArtifactRef],
         attempt: int,
         usage: tuple[int, int],
+        stage_usage: Mapping[str, CostSummary],
     ) -> None:
         """build_execution loopback edge (newly_required_path_or_plan_contradiction):
         uncertainty returns to implementation_planning; synchronization is prohibited,
@@ -773,6 +816,7 @@ class WorkflowEngine:
                 allow_recovery=False,
                 produced=dict(produced),
                 usage=usage,
+                stage_usage=stage_usage,
             )
             return
         self.stores.events.emit(
@@ -790,6 +834,7 @@ class WorkflowEngine:
                     "stage_attempts": attempts,
                     "resume_point": "implementation_planning",
                     "reason": "build returned uncertainty; replanning and new approval required",
+                    "stage_usage": dict(stage_usage),
                     "tokens_used": tokens_used,
                     "tool_calls_used": tool_calls_used,
                 }
@@ -838,11 +883,13 @@ class WorkflowEngine:
         allow_recovery: bool = True,
         produced: Mapping[str, ArtifactRef] | None = None,
         usage: tuple[int, int] | None = None,
+        stage_usage: Mapping[str, CostSummary] | None = None,
     ) -> None:
         """stage.on_failure routing: a recoverable stage retries in place until
         max_recovery_attempts is exhausted; any other failure routes to
         completion/failed with failure_record + retained_evidence (completion accepts)."""
         tokens_used, tool_calls_used = usage if usage is not None else (record.tokens_used, record.tool_calls_used)
+        merged_usage = dict(stage_usage if stage_usage is not None else record.stage_usage)
         merged = dict(record.produced_artifacts)
         if produced:
             merged.update(produced)
@@ -867,6 +914,7 @@ class WorkflowEngine:
                         "stage_attempts": attempts,
                         "resume_point": str(on_failure.get("resume_at", stage_id)),
                         "reason": f"recovery scheduled: {reason}",
+                        "stage_usage": merged_usage,
                         "tokens_used": tokens_used,
                         "tool_calls_used": tool_calls_used,
                     }
@@ -893,6 +941,7 @@ class WorkflowEngine:
                     "produced_artifacts": merged,
                     "stage_attempts": attempts,
                     "resume_point": stage_id,
+                    "stage_usage": merged_usage,
                     "tokens_used": tokens_used,
                     "tool_calls_used": tool_calls_used,
                 }
@@ -933,6 +982,7 @@ class WorkflowEngine:
             resulting_source_checkpoint=record.produced_artifacts.get("resulting_source_checkpoint"),
             tokens_used=record.tokens_used,
             tool_calls_used=record.tool_calls_used,
+            stage_usage=record.stage_usage,
             completed_at=_utcnow(),
         )
         completion_ref = self._store("completion_record", completion, "completion")

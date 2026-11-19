@@ -41,11 +41,43 @@ uv run --no-sync python -m breakdown status <id> --workflow ../breakdown.yaml --
 ```
 
 Commands: `run`, `resume`, `decide`, `cancel`, `status`, `--check`.
-Mutating commands require `--offline-demo` while Phase 2 ships no live SDK
-backends. State lives in `<target>/.breakdown/` (SQLite stores, gitignored);
-a lockfile guards concurrent access (`--force-unlock` takes over a
-known-stale lock). Every invocation is stateless — runs pause at approvals
-and resume in later processes.
+Mutating commands need a backend source: `--offline-demo` (scripted, no
+API) or `--live` (OpenAI-compatible API). State lives in
+`<target>/.breakdown/` (SQLite stores, gitignored); a lockfile guards
+concurrent access (`--force-unlock` takes over a known-stale lock). Every
+invocation is stateless — runs pause at approvals and resume in later
+processes.
+
+## Live mode (Databricks key or any custom API key)
+
+The live backends speak any OpenAI-compatible chat API — Databricks Model
+Serving, a custom gateway (LiteLLM/vLLM/Ollama-style), or OpenAI itself.
+Set the environment (see `.env.example`):
+
+```bash
+# Databricks Model Serving
+export BREAKDOWN_API_BASE_URL="https://<workspace-url>/serving-endpoints/<endpoint-name>/v1"
+export BREAKDOWN_API_KEY="<databricks-pat>"
+export BREAKDOWN_MODEL="<served-model-name>"
+# Optional two-tier economics: frontier for judgment, cheaper for reading
+export BREAKDOWN_MODEL_AUDITOR="<frontier-model>"
+export BREAKDOWN_MODEL_RESEARCHER="<cheap-model>"
+```
+
+Live runs are binding-gated: first produce evaluation evidence, then
+record bindings (template: `bindings.example.json`):
+
+```bash
+uv run --no-sync python scripts/live_probe.py          # endpoint smoke test
+uv run --no-sync python evals/run.py --live            # role evaluation against the live API
+# record BackendBinding records from the evaluation, then:
+uv run --no-sync python -m breakdown run "your request" \
+    --workflow breakdown.yaml --target <repo> --live --bindings bindings.json
+```
+
+Cost attribution is per stage: `status` renders a stage-cost table, the
+completion record carries `cost_summary.by_stage`, and budget exhaustion
+records which stage spent what.
 
 ## Development
 

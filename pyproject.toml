@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "OneShot Breakdown: contract-governed eight-stage workflow from request to synchronized build"
 requires-python = ">=3.11"
 dependencies = [
+    "openai>=1.50,<3",
     "pydantic>=2,<3",
     "pydantic-settings>=2,<3",
     "pyyaml>=6",
