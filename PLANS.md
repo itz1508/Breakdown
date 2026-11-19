@@ -271,5 +271,15 @@ separate binding milestone.
   10 new test rows (per-stage cap, reserve + threshold event, workflow max tokens,
   tool-call cap, budget boundaries, recovery retry/exhaustion, timeout exhaustion,
   loopback-then-success, build not_valid).
-- [ ] P2-T8 reports + completion polish · P2-T9 bootstrap/CLI · P2-T10 evals expansion (Gate C)
+- [x] (2026-11-18) P2-T8 reports + completion op — `completion.py`: record_completion as a
+  first-class deterministic operation (COMPLETION_OPERATIONS registry mirroring
+  PLANNING_OPERATIONS): data-driven accepts-matrix validation over the yaml completion
+  block (all four outcomes covered by parametrized rows), CompletionRecord assembly with
+  terminal_state mapping, retained_evidence now wired into the record (failed/cancelled
+  routes cite the evidence bundle ref). Engine _complete_run delegates to it. `reports.py`:
+  deterministic Markdown projections citing every artifact as key@revision + CAS digest
+  (verifiable against the stores; no payloads, no wall-clock). 13 test rows incl. engine
+  integration for success + failed completion. Cycle-3 fix: collections.abc.AbstractSet
+  does not exist on CPython 3.11 — use collections.abc.Set.
+- [ ] P2-T9 bootstrap/CLI · P2-T10 evals expansion (Gate C)
 

@@ -32,6 +32,7 @@ from breakdown.approvals import ApprovalManager
 from breakdown.artifact_store import ArtifactStore
 from breakdown.canonical import definition_digest as compute_definition_digest
 from breakdown.checkpoint import capture_source_checkpoint, checkpoint_is_fresh
+from breakdown.completion import build_completion_record, validate_accepts
 from breakdown.contracts import (
     ContractActivationError,
     ContractRegistry,
@@ -44,10 +45,9 @@ from breakdown.models import (
     BuildExecutionInput,
     BuildExecutionOutput,
     CancellationRecord,
+    CheckResult,
     ClassifiedFinding,
-    CompletionRecord,
     ContractKind,
-    CostSummary,
     CriterionResult,
     EventType,
     FailureRecord,
@@ -893,33 +893,30 @@ class WorkflowEngine:
         if record.state is RunState.TERMINAL:
             return record
         accepts = self.definition.get_stage("completion").accepts or {}
-        required_keys = tuple(str(key) for key in (accepts.get(outcome) or {}).get("requires", []))
-        missing = [key for key in required_keys if key not in record.produced_artifacts]
+        missing = validate_accepts(accepts, outcome, record.produced_artifacts.keys())
         if missing:
-            raise EngineError(f"completion accepts matrix unmet for {outcome!r}: missing {missing}")
+            raise EngineError(f"completion accepts matrix unmet for {outcome!r}: missing {sorted(missing)}")
         changed_paths: tuple[str, ...] = ()
         sync_ref = record.produced_artifacts.get("synchronization_result")
         if sync_ref is not None:
             sync = self.stores.artifacts.get_model(SynchronizationResult, sync_ref.artifact_key, sync_ref.revision)
             changed_paths = sync.copied_paths
-        validation_results: tuple[Any, ...] = ()
+        validation_results: tuple[CheckResult, ...] = ()
         build_ref = record.produced_artifacts.get("build_result")
         if build_ref is not None:
             build_output = self.stores.artifacts.get_model(
                 BuildExecutionOutput, build_ref.artifact_key, build_ref.revision
             )
             validation_results = build_output.validation_results
-        terminal_state = {"success": "completed", "partial": "completed"}.get(outcome, outcome)
-        completion = CompletionRecord(
-            completion_outcome=outcome,
+        retained_ref = record.produced_artifacts.get("retained_evidence")
+        completion = build_completion_record(
+            outcome=outcome,
             changed_paths=changed_paths,
             validation_results=validation_results,
-            criterion_results=(),
-            remaining_work=(),
-            retained_evidence=(),
+            retained_evidence=(retained_ref,) if retained_ref is not None else (),
             resulting_source_checkpoint=record.produced_artifacts.get("resulting_source_checkpoint"),
-            cost_summary=CostSummary(tokens_used=record.tokens_used, tool_calls_used=record.tool_calls_used),
-            terminal_state=terminal_state,
+            tokens_used=record.tokens_used,
+            tool_calls_used=record.tool_calls_used,
             completed_at=_utcnow(),
         )
         completion_ref = self._store("completion_record", completion, "completion")
