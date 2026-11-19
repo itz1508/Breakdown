@@ -157,6 +157,7 @@ class Settings(BaseSettings):
 
     workflow_path: Path = Path("breakdown.yaml")
     target_repo: Path = Path(".")
+    state_root: Path = Path(".breakdown")
     backend_bindings_path: Path | None = None
 
 

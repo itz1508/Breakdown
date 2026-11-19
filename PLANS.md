@@ -281,5 +281,17 @@ separate binding milestone.
   (verifiable against the stores; no payloads, no wall-clock). 13 test rows incl. engine
   integration for success + failed completion. Cycle-3 fix: collections.abc.AbstractSet
   does not exist on CPython 3.11 — use collections.abc.Set.
-- [ ] P2-T9 bootstrap/CLI · P2-T10 evals expansion (Gate C)
+- [x] (2026-11-18) P2-T9 bootstrap.build_runtime + CLI — `build_runtime()` wires stores
+  under `<target>/.breakdown/` (D12), LockfileGuard (atomic O_EXCL pid lock; foreign lock
+  aborts, --force-unlock takes over known-stale locks; release only deletes own lock — D18),
+  ApprovalManager, per-run role factory, and the engine; bindings validated unless
+  --offline-demo (D26). `demo.py`: scripted offline backends (validator-passing outputs;
+  demo coding backend creates DEMO_CHANGE.md in the sandbox). CLI: run / resume / decide /
+  cancel / status subcommands + --check retained; status is read-only (no lock, no
+  backends) and prints the reports.py Markdown; demo resume re-reads the stored
+  initial_request for backend scripting. Cycle-4 fix: demo decision_trace observation is a
+  'true'/'false'/'unknown' literal. 10 new tests incl. subprocess e2e: separate CLI
+  processes drive run→decide→resume→decide→resume to success with DEMO_CHANGE.md
+  synchronized into the target, plus cancel, lock-contention, and error paths.
+- [ ] P2-T10 evals expansion (Gate C)
 
