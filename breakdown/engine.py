@@ -17,6 +17,7 @@ can pause at ``awaiting_decision`` and resume in a later process.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import secrets
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -41,7 +42,6 @@ from breakdown.contracts import (
 )
 from breakdown.events import EventStore
 from breakdown.memory import MemoryStore
-from breakdown.verification import build_verification_input, verification_request, parse_verification, verification_failure_reason
 from breakdown.models import (
     ArtifactRef,
     BuildExecutionInput,
@@ -82,6 +82,11 @@ from breakdown.models import (
 from breakdown.planning_ops import freeze_plan, run_preflight
 from breakdown.run_store import RunStore
 from breakdown.safety import SafetyBoundary
+from breakdown.verification import (
+    build_verification_input,
+    parse_verification,
+    verification_request,
+)
 
 
 class WorkflowDefinitionError(ValueError):
@@ -628,7 +633,11 @@ class WorkflowEngine:
         return self.stores.artifacts.get_digest(ref.artifact_key, ref.revision) == ref.digest
 
     def _post_build(
-        self, run_id: str, produced: dict[str, ArtifactRef], approved_checkpoint: SourceCheckpoint, sandbox: Path | None = None
+        self,
+        run_id: str,
+        produced: dict[str, ArtifactRef],
+        approved_checkpoint: SourceCheckpoint,
+        sandbox: Path | None = None,
     ) -> str | None:
         """build_execution.synchronization: detect, authorize, synchronize, reconcile."""
         report = self.stores.safety.detect_changed_paths(run_id, approved_checkpoint)
@@ -640,11 +649,11 @@ class WorkflowEngine:
         plan = self.stores.artifacts.get_model(ImplementationPlan, plan_ref.artifact_key, plan_ref.revision)
         approved_paths = {target.path for task in plan.tasks for target in task.target_paths}
         task_results_valid = all(result.criterion is CriterionResult.VALID for result in build_output.task_results)
-        # D35: independent verification — if a verifier backend is configured, grade each
+        # D35: independent verification - if a verifier backend is configured, grade each
         # build task against the plan's validation steps by reading the actual sandbox files.
-        # The builder's self‑report (validation_results) is kept as evidence but no longer
+        # The builder's self-report (validation_results) is kept as evidence but no longer
         # gates authorization; independent_verification is stored as an artifact.
-        verifier = self._role_factory(None).get("verifier")
+        verifier = self.role_factory(None).get("verifier")
         if verifier is not None:
             # Assemble verification input from the plan, build output, and sandbox
             vb_input = build_verification_input(run_id, plan, build_output, sandbox or self.stores.safety.target_root)
@@ -652,17 +661,16 @@ class WorkflowEngine:
             # Run the verifier backend in a fresh context
             try:
                 vb_response = asyncio.run(verifier.generate(vb_request))
-            except Exception:  # noqa: BLE001 - verifier unavailable → conservative block
+            except Exception:
                 integration_valid = False
-                verification_blocked = "independent verifier unavailable"
             else:
                 verdicts = parse_verification(vb_response, vb_input)
                 integration_valid = all(v.criterion is CriterionResult.VALID for v in verdicts)
-                verification_blocked = verification_failure_reason(verdicts)
         else:
-            # Legacy self‑report path (backward compatible)
-            integration_valid = all(result.criterion is CriterionResult.VALID for result in build_output.validation_results)
-            verification_blocked = None
+            # Legacy self-report path (backward compatible)
+            integration_valid = all(
+                result.criterion is CriterionResult.VALID for result in build_output.validation_results
+            )
         record = self._reload(run_id)
         sync_result = self.stores.safety.authorize_synchronization(
             report=report,
@@ -1062,14 +1070,13 @@ class WorkflowEngine:
             ]
         lines.append(f"- Tokens used: {record.tokens_used}; tool calls: {record.tool_calls_used}")
         by_stage = ", ".join(
-            f"{stage}={usage.tokens_used}t/{usage.tool_calls_used}tc" for stage, usage in sorted(record.stage_usage.items())
+            f"{stage}={usage.tokens_used}t/{usage.tool_calls_used}tc"
+            for stage, usage in sorted(record.stage_usage.items())
         )
         lines.append(f"- Usage by stage: {by_stage or 'none'}")
         lines.append("")
-        try:
+        with contextlib.suppress(Exception):
             memory.write(path, "\n".join(lines), run_id=run_id)
-        except Exception:  # noqa: BLE001 - best-effort telemetry, never blocks completion
-            pass
 
     def record_decision(self, run_id: str, action: str, *, user_identity: str, reason: str = "") -> RunRecord:
         outcome = self.approvals.record_decision(run_id, action, user_identity=user_identity, reason=reason)

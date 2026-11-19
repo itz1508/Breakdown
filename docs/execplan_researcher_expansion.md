@@ -1,0 +1,134 @@
+# Codex ExecPlan: Researcher Expansion, Build-Baseline Mapping & Normalization
+
+This ExecPlan conforms to the OpenAI Cookbook discipline ([Codex ExecPlans](https://developers.openai.com/cookbook/articles/codex_exec_plans)). Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective are maintained as work proceeds.
+
+---
+
+## 1. Purpose / Big Picture
+
+After this work, a user can dispatch complex, multi-question research requests to Breakdown. The Researcher role autonomously drives investigation using canonical and semantic vector search tools, decomposes multi-question scope across parallel read-only subagents, produces an authoritative `BaselineMap` (repository scaffolding and file-to-responsibility inventory) and verified `NormalizedEvidence`, and can be hosted as an independent completion bot (FastAPI SSE, Modal scale-to-zero, or Slack Socket Mode bot) with cross-session memory stores. The Auditor in Stage 4 acts as an independent governance gate validating the Researcher's pre-normalized findings.
+
+Observable behaviors:
+- `python -m breakdown --check` reports all 8 stages aligned with full produces coverage.
+- The Researcher outputs a structured `BaselineMap` containing verified repository modules and scaffolding entries.
+- Multi-question research runs dispatch up to 3 bounded parallel sub-investigations over read-only tools and aggregate findings without polling.
+- Semantic repo search (`semantic_search`) queries vector embeddings when available and falls back cleanly to local lexical search when offline.
+- Slack command `/research <topic>` or FastAPI `POST /sessions/{id}/messages` streams SSE updates and produces a complete research record.
+
+---
+
+## 2. Gap Review (Round 18 — Found and Fixed)
+
+| Gap ID | Severity | Discovered Gap | Resolution / Fix |
+|---|---|---|---|
+| **G1** | High | `breakdown.yaml` declares `produces: research_response` for Stage 3; moving keys outside `ResearchRecord` would break contract alignment and produces-coverage invariants. | Embed `baseline_map: BaselineMap | None = None` and `normalized_evidence: tuple[NormalizedEvidence, ...] = ()` directly inside `ResearchRecord` (which is the authoritative schema for `research_response`). Zero definition drift; 100% contract compliance. |
+| **G2** | High | `NormalizedEvidence` in `models.py` was defined below `FindingsReviewOutput` and lacked provenance fields (only had `evidence_ref`, `normalized_form`). | Enhance `NormalizedEvidence` with `source_identity`, `source_location`, and `provenance_preserved`, and declare it prior to `ResearchRecord`. |
+| **G3** | Med | Databricks AI Search vector index (`breakdown_knowledge_index`) requires Databricks SDK credentials, which are not present in local test environments. | Build `breakdown/tools/semantic_search.py` with dual-mode dispatch: calls Databricks Vector Search if configured, otherwise falls back to local AST/content search so all offline tests pass. |
+| **G4** | Med | Multi-question delegation in `Researcher` currently runs as a single serialized turn. | Implement bounded subagent orchestration in `Researcher.execute_research` using the Hub message-passing pattern, capped by `breakdown.yaml` limits (`max_workers: 3`, `max_rounds: 3`). |
+| **G5** | Low | Missing Slack app manifest and hosting scripts in the repository. | Add `slack_app_manifest.yaml` (Socket Mode) and `breakdown/services/server.py` (FastAPI SSE). |
+| **G6** | Low | Cross-session memory conventions needed for baseline maps. | Add helper functions in `breakdown/memory.py` for reading/writing `baseline_maps/<repo_id>.json`. |
+
+---
+
+## 3. Progress
+
+- [x] (2026-11-19) Gap analysis conducted against 7 cookbook sources, `breakdown.yaml`, and codebase.
+- [x] (2026-11-19) Decision D39 recorded in `PLANS.md`; Decision D40 adopting this ExecPlan drafted.
+- [ ] Task 1: Data models expansion (`BaselineMap`, `ScaffoldingEntry`, updated `NormalizedEvidence`, updated `ResearchRecord` in `breakdown/models.py`).
+- [ ] Task 2: Semantic search tool implementation (`breakdown/tools/semantic_search.py`) with hybrid offline fallback and tool registry registration.
+- [ ] Task 3: Researcher autonomous engine and Hub subagent orchestration (`breakdown/roles/researcher.py` and `breakdown/orchestration/hub.py`).
+- [ ] Task 4: Auditor review gate alignment (`breakdown/roles/auditor.py`) consuming Researcher's pre-normalized findings and baseline map.
+- [ ] Task 5: Memory conventions & helpers for baseline maps (`breakdown/memory.py`).
+- [ ] Task 6: Multi-tier hosting & Slack Bot manifest (`breakdown/services/server.py`, `slack_app_manifest.yaml`).
+- [ ] Task 7: Comprehensive test suite verification (`tests/test_roles.py`, `tests/test_tools.py`, `pytest`, `ruff`, `mypy`, `evals`).
+
+---
+
+## 4. Surprises & Discoveries
+
+- Observation: `ResearchRecord` in `breakdown/models.py` is the designated authoritative payload for Stage 3's `research_response` artifact.
+- Evidence: `breakdown.yaml` line 337 (`produces: research_response`) and `breakdown/contracts.py` mappers.
+- Resolution: Embedding `baseline_map` and `normalized_evidence` inside `ResearchRecord` allows the Researcher to own baseline mapping and normalization without requiring a breaking change to `breakdown.yaml` or contract registries.
+
+---
+
+## 5. Decision Log
+
+- **Decision D39**: Build-Baseline Mapping & Evidence Normalization inventory established; 5 advanced capabilities mapped to Anthropic cookbook patterns. (2026-11-19 / ExecPlan)
+- **Decision D40**: Researcher owns `BaselineMap` and `NormalizedEvidence` authoring within `ResearchRecord`; Auditor's `review_research_findings` acts as independent verification gate. Offline-first fallback implemented for vector search. (2026-11-19 / ExecPlan)
+
+---
+
+## 6. Context and Orientation
+
+- `breakdown.yaml`: Canonical declarative workflow definition (8 stages, definition_version 1).
+- `breakdown/models.py`: Authoritative Pydantic data schemas.
+- `breakdown/roles/researcher.py`: Researcher role processor.
+- `breakdown/roles/auditor.py`: Auditor role processor (stages 1 & 4).
+- `breakdown/tools.py`: Canonical tool registry and allowlist.
+- `breakdown/memory.py`: Durable SQLite CAS cross-run memory store.
+
+---
+
+## 7. Plan of Work
+
+### Task 1: Data Models Expansion (`breakdown/models.py`)
+- Add `ScaffoldingEntry` and `BaselineMap`.
+- Update `NormalizedEvidence` with `source_identity`, `source_location`, `source_version`, and `provenance_preserved`.
+- Update `ResearchRecord` to include `baseline_map: BaselineMap | None = None` and `normalized_evidence: tuple[NormalizedEvidence, ...] = ()`.
+- **Named Check**: `uv run python -c "from breakdown.models import BaselineMap, ScaffoldingEntry, ResearchRecord"` exits 0.
+
+### Task 2: Semantic Search Tool (`breakdown/tools/semantic_search.py`)
+- Implement `semantic_search(request: SemanticSearchRequest, root: Path, ...) -> SemanticSearchResult`.
+- When Databricks Vector Search SDK is available and configured, query `breakdown_knowledge_index`.
+- If offline, perform local text/regex indexing across files in `root`.
+- Register in `breakdown/tools.py` under `TOOLS["semantic_search"]` and update `ROLE_TOOL_ALLOWLIST`.
+- **Named Check**: `uv run pytest tests/test_tools.py -k semantic_search` exits 0.
+
+### Task 3: Researcher Autonomous Engine & Subagents (`breakdown/roles/researcher.py`)
+- Implement question decomposition and Hub message passing when multiple questions are approved.
+- Enforce `breakdown.yaml` delegation bounds (`max_workers: 3`, `max_rounds: 3`, read-only).
+- Enforce `material_findings_have_provenance`, `contradictions_preserved`, and `implementation_not_selected`.
+- Construct authoritative `BaselineMap` during execution.
+- **Named Check**: `uv run pytest tests/test_roles.py -k test_researcher` exits 0.
+
+### Task 4: Auditor Review Gate Alignment (`breakdown/roles/auditor.py`)
+- Update `review_research_findings` to audit the Researcher's `candidate_findings` and `normalized_evidence` against candidate requirements.
+- Validate that all contradictions and unresolved questions are carried forward.
+- **Named Check**: `uv run pytest tests/test_roles.py -k test_auditor` exits 0.
+
+### Task 5: Memory Store Baseline Helpers (`breakdown/memory.py`)
+- Add `store_baseline_map(store: MemoryStore, repo_id: str, baseline_map: BaselineMap) -> str`.
+- Add `get_baseline_map(store: MemoryStore, repo_id: str) -> BaselineMap | None`.
+- **Named Check**: `uv run pytest tests/test_memory.py -k baseline_map` exits 0.
+
+### Task 6: Hosting & Slack Manifest (`breakdown/services/server.py`, `slack_app_manifest.yaml`)
+- Create `slack_app_manifest.yaml` (Socket Mode, scopes `app_mentions:read`, `chat:write`, `commands`).
+- Create `breakdown/services/server.py` with FastAPI endpoints (`GET /health`, `POST /sessions/{id}/messages` SSE).
+- **Named Check**: `uv run python -c "from breakdown.services import server"` exits 0.
+
+---
+
+## 8. Validation and Acceptance
+
+Execute from `D:\Breakdown-tmp`:
+
+```powershell
+uv run --no-sync python -m breakdown --check
+uv run --no-sync pytest -q
+uv run --no-sync ruff check .
+uv run --no-sync mypy breakdown
+uv run --no-sync python evals/run.py --offline
+```
+
+Acceptance Criteria:
+1. `breakdown --check` reports 8 stages aligned with full produces coverage.
+2. All 285+ pytest tests pass without errors.
+3. Offline evals score 16/16 cases and all 8 blocking zeros hold at 0 violations.
+4. `ruff check .` and `mypy breakdown` produce 0 errors.
+
+---
+
+## 9. Idempotence and Recovery
+
+All file writes are atomic and idempotent. If execution fails at any step, the previous git commit remains untouched. Rerunning `pytest` cleans scratch workspaces.

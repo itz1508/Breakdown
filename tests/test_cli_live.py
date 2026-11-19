@@ -1,10 +1,5 @@
 """Phase 3b - D37: consolidate-memory CLI tests."""
 
-import pytest
-from pathlib import Path
-import tempfile
-import shutil
-from unittest.mock import patch, MagicMock
 
 
 def test_cli_consolidate_live():

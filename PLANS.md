@@ -395,6 +395,35 @@ OpenAI-compatible endpoints (Databricks key or custom API key).
   construction (writes only declared target paths, traversal-checked) AND
   still gated by the safety boundary downstream (detect/authorize/sync).
   Overreach attempts fail the task and write nothing.
+- [x] (2026-11-19) D35 — independent verification gates sync authorization:
+  when a verifier backend is available, `integration_valid` inside `_post_build`
+  is computed from the verifier's per-criterion results, not from the builder's
+  self-report. The builder's self-report remains stored as evidence but no longer
+  authorizes. If no verifier is configured, the legacy self-report path is used
+  unchanged, preserving backward compatibility for eval fakes and existing test
+  harnesses.
+- [x] (2026-11-19) D36 — memory store + runtime-only writes: lessons are
+  written deterministically by the engine at run completion as immutable versions
+  in a SQLite CAS under the state root; roles receive read-only memory tools
+  (`memory_list`, `memory_read`, `memory_search`); consolidation writes a new
+  revision via explicit CLI command; inputs are never modified.
+- [x] (2026-11-19) D37 — consolidate-memory = live-only dream equivalent:
+  `consolidate-memory --live [--instructions TEXT]` merges accumulated lessons
+  into a fresh revision using the live model; without `--live` the command prints
+  a refusal and exits nonzero. This reproduces the two reference properties:
+  immutable versions as audit trail, and "the input store is never modified."
+- [x] (2026-11-19) D38 — live transport retry: transient `429`, `5xx`, and
+  connection errors are retried with exponential backoff (honoring
+  `Retry-After`) up to three times before the stage's existing recovery takes
+  effect. A shared `_with_retry` wrapper covers both role generation and coding
+  `apply_task` calls; `retry_base_delay` is injectable for tests.
+- [x] (2026-11-19) D39 — Build-Baseline Mapping & Evidence Normalization inventory:
+  `docs/researcher-build-inventory.md` establishes the five advanced capabilities
+  (semantic search via Databricks AI Search `breakdown_knowledge_index`, autonomous
+  tool runner loops, async subagent delegation via Hub message passing, multi-tier
+  hosting + Slack bot, and cross-session memory stores) and reallocates authoritative
+  `BaselineMap` and `NormalizedEvidence` production to the Researcher role, with
+  Auditor `findings_review` serving as the independent verification gate.
 - Deferred (Phase 3b): parallel worker fan-out (def-1 declares
   execution_order sequential), streaming/resume/hooks capabilities, CMA
   interop, decomposition-audit eval zero (cookbook caveat: "the facts were

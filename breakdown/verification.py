@@ -8,20 +8,23 @@ from __future__ import annotations
 from pathlib import Path
 
 from breakdown.models import (
+    BuildExecutionOutput,
     BuildVerificationInput,
     BuildVerificationOutput,
     CheckResult,
+    CriterionResult,
+    ImplementationPlan,
     ObservedFile,
+    RoleBackendRequest,
+    RoleBackendResponse,
     VerificationTaskView,
-    Settings,
 )
-from breakdown.tools import RoleBackendRequest
 
 
 def build_verification_input(
     run_id: str,
-    plan: "ImplementationPlan",
-    build_output: "BuildExecutionOutput",
+    plan: ImplementationPlan,
+    build_output: BuildExecutionOutput,
     sandbox: Path,
     *,
     max_file_chars: int = 8000,
@@ -31,14 +34,14 @@ def build_verification_input(
 
     tasks: tuple[VerificationTaskView, ...] = ()
 
-    for task in build_output.task_tasks:  # type: ignore[attr-defined]
+    for task in plan.tasks:
         task_ref = task.task_id
         description = task.responsibility or "build task"
         expected_result = task.expected_result or ""
 
         observed_files: tuple[ObservedFile, ...] = ()
-        for target in task.target_paths:  # type: ignore[attr-defined]
-            tpath = target.path  # type: ignore[attr-defined]
+        for target in task.target_paths:
+            tpath = target.path
             try:
                 sandbox_file = sandbox / tpath
                 if sandbox_file.exists():
@@ -48,19 +51,22 @@ def build_verification_input(
                 else:
                     content = ""
                     truncated = False
-            except Exception:  # noqa: BLE001 - best-effort; missing file --> empty
+            except Exception:
                 content = ""
                 truncated = False
-            observed_files = observed_files + (
+            observed_files = (
+                *observed_files,
                 ObservedFile(path=tpath, content=content, truncated=truncated),
             )
 
-        tasks = tasks + (
+        v_steps = tuple(step.description for step in task.validation_steps) if task.validation_steps else ()
+        tasks = (
+            *tasks,
             VerificationTaskView(
                 task_ref=task_ref,
                 description=description,
                 expected_result=expected_result,
-                validation_steps=task.validation_steps or (),
+                validation_steps=v_steps,
                 observed_files=observed_files,
             ),
         )
@@ -72,12 +78,22 @@ def verification_request(input_: BuildVerificationInput) -> RoleBackendRequest:
     """Wrap a ``BuildVerificationInput`` in a ``RoleBackendRequest`` for the
     verifier backend."""
 
+    step_lines = [
+        (
+            f"Task {t.task_ref}: {t.description}\n"
+            f"Expected: {t.expected_result}\n"
+            f"Validation: {', '.join(t.validation_steps)}"
+        )
+        for t in input_.tasks
+    ]
+    prompt = f"Verify build tasks for run {input_.run_id}.\n" + "\n".join(step_lines)
+
     return RoleBackendRequest(
         operation="verify_build_task",
         system_prompt="You are an independent grader. Evaluate each task's "
         "output against its rubric. Be precise and do not use the builder's "
         "reasoning.",
-        prompt="",  # the prompt is embedded via observed_files
+        prompt=prompt,
         output_schema=BuildVerificationOutput.model_json_schema(),
         tool_names=(),
         max_tokens=8000,
@@ -85,7 +101,7 @@ def verification_request(input_: BuildVerificationInput) -> RoleBackendRequest:
 
 
 def parse_verification(
-    response: "RoleBackendResponse",
+    response: RoleBackendResponse,
     input_: BuildVerificationInput,
 ) -> tuple[CheckResult, ...]:
     """Parse a ``RoleBackendResponse`` into a tuple of ``CheckResult``.
@@ -102,21 +118,22 @@ def parse_verification(
         return tuple(
             CheckResult(
                 check_ref=input_.tasks[i].task_ref,
-                criterion="verifier_error",
+                criterion=CriterionResult.NOT_VALID,
                 expected=input_.tasks[i].expected_result,
                 actual_observation="backend returned no structured output",
             )
             for i in range(n)
         )
 
+    vr = sv.get("task_verifications") if isinstance(sv, dict) else getattr(sv, "task_verifications", None)
+
     tv: VerificationTaskView
     for i, tv in enumerate(input_.tasks):
-        vr = getattr(sv, "task_verifications", None)
         if vr is None or i >= len(vr):
             results.append(
                 CheckResult(
                     check_ref=tv.task_ref,
-                    criterion="not_valid",
+                    criterion=CriterionResult.NOT_VALID,
                     expected=input_.tasks[i].expected_result,
                     actual_observation="no verdict from verifier",
                 )
@@ -124,37 +141,29 @@ def parse_verification(
             continue
 
         cv = vr[i]
-        criterion = cv.criterion or "not_valid"
-        expected = tv.expected_result
-        actual = cv.actual_observation or ""
-
-        if criterion == "uncertainty":
-            results.append(
-                CheckResult(
-                    check_ref=tv.task_ref,
-                    criterion="uncertainty",
-                    expected=expected,
-                    actual_observation=actual,
-                )
-            )
-        elif criterion == "not_valid":
-            results.append(
-                CheckResult(
-                    check_ref=tv.task_ref,
-                    criterion="not_valid",
-                    expected=expected,
-                    actual_observation=actual,
-                )
-            )
+        if isinstance(cv, dict):
+            raw_criterion = cv.get("criterion", "not_valid")
+            actual = cv.get("actual_observation", "")
         else:
-            results.append(
-                CheckResult(
-                    check_ref=tv.task_ref,
-                    criterion=criterion,
-                    expected=expected,
-                    actual_observation=actual,
-                )
+            raw_criterion = getattr(cv, "criterion", "not_valid")
+            actual = getattr(cv, "actual_observation", "")
+
+        if isinstance(raw_criterion, CriterionResult):
+            criterion = raw_criterion
+        else:
+            try:
+                criterion = CriterionResult(str(raw_criterion))
+            except ValueError:
+                criterion = CriterionResult.NOT_VALID
+
+        results.append(
+            CheckResult(
+                check_ref=tv.task_ref,
+                criterion=criterion,
+                expected=tv.expected_result,
+                actual_observation=str(actual),
             )
+        )
 
     return tuple(results)
 
@@ -170,7 +179,7 @@ def verification_failure_reason(results: tuple[CheckResult, ...]) -> str | None:
     blocked: list[str] = []
     for cr in results:
         if cr.criterion in ("not_valid", "uncertainty"):
-            blocked.append(f"{cr.task_ref}: {cr.criterion} (expected={cr.expected!r})")
+            blocked.append(f"{cr.check_ref}: {cr.criterion} (expected={cr.expected!r})")
 
     if not blocked:
         return None

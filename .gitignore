@@ -16,11 +16,15 @@ build/
 .venv/
 venv/
 
-# Caches
+# Caches and test output
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/
 .pytest-tmp/
+*.done
+*.out
+*.log
+*.tmp
 
 # Runtime state (never shipped)
 .breakdown/

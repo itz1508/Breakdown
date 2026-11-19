@@ -162,6 +162,10 @@ def _finish_demo_outputs(proposal: dict[str, Any], research: dict[str, Any]) -> 
         "execute_research": research,
         "review_research_findings": findings,
         "create_implementation_plan": plan,
+        "verify_build_task": {
+            "output_model": "BuildVerificationOutput",
+            "task_verifications": [],
+        },
     }
 
 
@@ -199,9 +203,3 @@ class OfflineDemoCodingBackend:
             reported_changed_paths=("DEMO_CHANGE.md",),
             usage=TokenUsage(input_tokens=25, output_tokens=25, tool_calls=1),
         )
-
-# verify_build_task added for D35 independent verification
-"verify_build_task": {
-    "output_model": "BuildVerificationOutput",
-    "task_verifications": [],
-},

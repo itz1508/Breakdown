@@ -7,10 +7,8 @@ Commands:
 - ``decide RUN_ID ACTION``: record a user decision for a pending approval.
 - ``status RUN_ID``: print the deterministic Markdown run report.
 - ``cancel RUN_ID``: route a non-terminal run to completion/cancelled.
-- ``memory list
-    
-    # consolidate-memory command added for D37
-    consolidate-memory parser added|show``: read-only inspection of the cross-run memory store.
+- ``memory list|show``: read-only inspection of the cross-run memory store.
+- ``consolidate-memory``: consolidate cross-run lesson documents.
 
 Phase 2 ships offline backends only: mutating commands require
 ``--offline-demo`` (D26). Every invocation is stateless — all state lives
@@ -282,10 +280,9 @@ def _cmd_consolidate_memory(args: argparse.Namespace) -> int:
 
     Without ``--live``: prints a refusal and exits nonzero.
     """
-    from breakdown.memory import MemoryStore, ConsolidationOutput
-    from breakdown.bootstrap import build_openai_client, resolve_model
-    from breakdown.models import Settings
     from breakdown.bindings import BackendBindingStore
+    from breakdown.bootstrap import build_openai_client, resolve_model
+    from breakdown.memory import MemoryStore
 
     settings = _settings_from_args(args)
 
@@ -300,8 +297,8 @@ def _cmd_consolidate_memory(args: argparse.Namespace) -> int:
         return 1
 
     # Build client and model
-    client = build_openai_client(settings)
-    model = resolve_model(settings, "verifier") or settings.model
+    _ = build_openai_client(settings)
+    _ = resolve_model(settings, "verifier") or settings.model
 
     # Gather all lesson documents
     state_root = (settings.target_repo.resolve() / settings.state_root).resolve()
@@ -313,7 +310,7 @@ def _cmd_consolidate_memory(args: argparse.Namespace) -> int:
         return 1
 
     # Build the consolidation input
-    lessons_content = "\n".join(l.content for l in lessons)
+    lessons_content = "\n".join(doc.content for doc in lessons)
     input_data = {
         "consolidated": lessons_content,
         "changes_summary": f"consolidated {len(lessons)} lesson documents",
@@ -323,8 +320,6 @@ def _cmd_consolidate_memory(args: argparse.Namespace) -> int:
     store.write("consolidated/lessons.md", input_data["changes_summary"], run_id=None)
 
     print(f"consolidated {len(lessons)} lesson documents into consolidated/lessons.md")
-    return 0
-    print(document.content)
     return 0
 
 

@@ -13,7 +13,7 @@ from breakdown.approvals import ApprovalManager
 from breakdown.artifact_store import ArtifactStore
 from breakdown.engine import EngineStores, WorkflowEngine, load_workflow
 from breakdown.events import EventStore
-from breakdown.memory import MemoryStore
+from breakdown.memory import MemoryStore, validate_memory_path
 from breakdown.models import (
     CompletionRecord,
     EventType,
@@ -350,24 +350,13 @@ def test_lesson_extraction_failed(tmp_path: Path) -> None:
     # output is scripted COMPLETED, we instead trigger the earlier build_execution
     # stage's on_failure: failed after two attempts → the engine enters completion
     # with reason and we assert a lessons doc was produced.
-    record = e2e.engine.record_decision(run_id=record.run_id, action="decline", user_identity="u")
-    # With no decisions left, the engine falls through; _handle_stage_failure
-    # routes to _complete_run with reason="all attempts exhausted"
-    # and the lesson doc is written under lessons/. It may not have reached
-    # the write path if there's no memory configured in the engine stores for this
-    # fixture (the e2e engine.memory was set up but the lesson write path in
-    # _complete_run checks self.stores.memory). Let's just verify structure.
-    # Actually the lesson writes because stores.memory IS set, let's check:
-    # The planner stage would complete and then _complete_run writes the lesson.
-    # Since we need a run that actually fails (not completes), let's check via
-    # engine.cancel which sets terminal_outcome=failed.
-    e2e.engine.cancel(record.run_id)
-    # the run should now be terminal with reason from cancel
-    lesson = e2e.memory.read(f"lessons/{record.run_id}.md")
-    # The lesson doc may or may not be present depending on whether cancel
-    # traverses _complete_run path; assert the store path is clean.
-    # We just verify the store's contents are consistent.
+    record = e2e.engine.record_decision(run_id=record.run_id, action="cancel", user_identity="u", reason="declined")
+    record = e2e.engine.advance(run_id=record.run_id)
     assert record.state is RunState.TERMINAL
+    lesson = e2e.memory.read(f"lessons/{record.run_id}.md")
+    assert lesson is not None
+    assert lesson.content
+    assert lesson.revision == 1
 
 
 def test_event_sequence(e2e: _E2E) -> None:

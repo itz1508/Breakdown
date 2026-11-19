@@ -105,3 +105,25 @@ silently passing. See `evals/README.md`.
 - `tests/` — pytest suite. `evals/` — offline blocking-zero evaluation.
 - `PLANS.md` — execution plan and milestone record. `AGENTS.md` — agent
   operating instructions.
+
+## Independent Verification
+
+Synchronization authorization today depends on an independent verifier — a separate model invocation in a fresh context that receives only the rubric (the plan's `validation_steps` and `expected_result` strings) and the actual sandbox file contents, and returns per-criterion verdicts. The builder's self-report (`validation_results`) remains stored as evidence but no longer gates authorization.
+
+After this change, if a verifier backend is configured (via `BREAKDOWN_MODEL_VERIFIER` in `.env`), `integration_valid` inside `_post_build` is computed from the verifier's per-criterion results. If no verifier is configured, the legacy self-report path is used unchanged, preserving backward compatibility for eval fakes and existing test harnesses.
+
+A human can observe this behavior from the command line: a builder may claim success while the run ends `failed` because the verifier reported `not_valid` for one criterion, or the target repository contains none of the sandbox-produced files when verification rejects.
+
+## Cross-Run Memory
+
+Completed runs leave durable memory behind in the target's `.breakdown/state/memory.db`. The engine writes deterministic lesson documents on run completion: `runs/<run_id>.md` for successful runs and `lessons/<run_id>.md` for failed or cancelled runs. These markdown documents are immutable versions — the input store is never modified.
+
+Three canonical tools let roles read past lessons:
+
+- `memory list [--prefix P]` — list lesson documents by path prefix
+- `memory show PATH [--revision N]` — show a specific revision of a lesson document (read-only, no lock)
+- `memory search PATTERN` — regex search against lesson document content
+
+A live-only `consolidate-memory --live [--instructions TEXT]` command merges accumulated lessons into a fresh revision without ever modifying the inputs. Without `--live`, the command prints a refusal explaining consolidation requires a live model and exits nonzero.
+
+Lesson documents can be inspected with `python -m breakdown memory list --target <target>` and `python -m breakdown memory show runs/<run_id>.md --target <target>`.
