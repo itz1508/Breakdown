@@ -74,16 +74,22 @@ This document establishes the comprehensive inventory and technical blueprint fo
     - `worker_access: read_only`
     - `worker_output_authority: evidence_input_only`
 
-### Capability 4: Multi-Tier Hosting & Slack Bot Integration
-* **Primary Source**: *"Hosting the Agent"* + Slack App Manifest
-* **Standardized Tier Structure**:
-  - **Tier 1a (Ephemeral Batch)**: `run_once.py` CLI script executing `create_research_proposal` -> `execute_research` in CI/cron, exiting 0.
-  - **Tier 1b (Hybrid Server)**: FastAPI server with `GET /health` and `POST /sessions/{id}/messages` providing SSE progress streams.
-  - **Tier 2 (Modal Serverless)**: `modal.Sandbox.create` scale-to-zero container deployment with encrypted tunnels and volume mounts.
-  - **Tier 3 (Kubernetes)**: Multi-tenant production gateway with isolated per-session pods and NetworkPolicy egress lockdown.
-* **Slack Bot Gateway**:
-  - `slack_app_manifest.yaml` configuring Socket Mode (WebSocket, no public HTTP listener required).
-  - Handles `/research <query>` and channel `@researcher` mentions with threaded real-time progress updates.
+### Capability 4: Automations Architecture & Trigger Integration (D42 Refactored)
+* **Primary Source**: *"Automations Draft Wire Format"* (`prefillWorkflowData` for `open_automation`) + Managed Agents Runtime
+* **Automations Draft Skeleton**:
+  - Declared in `breakdown/automations.py` (`AutomationDraft`, `AutomationWorkflow`).
+  - Wire format matches reviewed Automations draft passed to `open_automation` as `prefillWorkflowData` (canonical proto JSON with full enum names).
+* **Exhaustive Trigger Oneof Keys**:
+  - Every entry in `workflow.triggers` must use exactly one of the 12 canonical keys: `cron`, `git`, `slackTrigger`, `slackReactionAdded`, `slackChannelCreated`, `emailReceived`, `microsoftTeamsTrigger`, `microsoftTeamsChannelCreated`, `linear`, `webhook`, `pagerduty`, `sentry`.
+  - Rejects invented or paraphrased keys (`slackReaction`, `slack_reaction`, `slack`, `reactionAdded`) which silently drop into unconfigurable cards in the editor.
+* **Canonical Slack Invariants (Refactored from standalone Socket Mode bot)**:
+  - **Triggers**: `slackTrigger` (channel mention/keyword) and `slackReactionAdded` (reaction approval e.g. `:white_check_mark:`); channel IDs must start with `C…` (public) or `G…` (private group).
+  - **Actions**: `slack` action emitting messages; channel IDs must start with `C…` (public), `G…` (private group), or `D…` (resolves to automation owner's DM).
+  - **Prompts**: Rendered with YAML `|` block scalar to preserve formatting and bullet points without folding.
+  - **Bot Ingestion**: `BreakdownBot.parse_trigger()` ingests and routes trigger payloads, while `BreakdownBot.emit_slack_action()` validates and formats responses.
+* **Deployment & Execution**:
+  - **CLI / Local**: `breakdown automation draft`, `breakdown automation validate`, and `breakdown bot --trigger`.
+  - **Interactive Stream**: `BreakdownBot.run_trigger_stream()` yielding typed `BotEvent`s.
 
 ### Capability 5: Cross-Session Memory Stores
 * **Primary Source**: *"Build agents that remember your users"* (Managed Agents Memory)
@@ -104,10 +110,9 @@ This document establishes the comprehensive inventory and technical blueprint fo
 | **Auditor Review Gate** | `breakdown/roles/auditor.py` | Lean governance verification of Researcher's pre-normalized findings |
 | **Anthropic Runner** | `breakdown/runners/anthropic_runner.py` | Native tool-use loop over `AsyncAnthropic` |
 | **Multi-Agent Hub** | `breakdown/orchestration/hub.py` | Async message passing and subagent supervisor |
-| **Slack Bot Adapter** | `breakdown/services/slack_bot.py` | Slack Bolt Socket Mode handler for `/research` |
-| **FastAPI Service** | `breakdown/services/server.py` | Tier 1b HTTP / SSE streaming endpoints |
+| **Automations Engine** | `breakdown/automations.py` | Authoritative Automations draft YAML and proto wire format (D42) |
+| **Breakdown Bot** | `breakdown/bot.py` | Event-driven bot runtime with trigger ingestion & action emission (D41, D42) |
 | **Modal Sandbox** | `scripts/modal_researcher.py` | Tier 2 serverless deployment definition |
-| **Slack Manifest** | `slack_app_manifest.yaml` | Declarative Slack app configuration |
 
 ---
 
@@ -117,15 +122,15 @@ This document establishes the comprehensive inventory and technical blueprint fo
    - Add `BaselineMap` and `NormalizedEvidence` to `breakdown/models.py`.
    - Update `ResearchExecutionOutput` to carry `baseline_map` and pre-normalized evidence.
 2. **Step 2: Semantic Search Tool Integration**:
-   - Implement `breakdown/tools/semantic_search.py` using Databricks Vector Search SDK with graceful offline fallback.
+   - Implement `breakdown/semantic_search.py` using Databricks Vector Search SDK with graceful offline fallback.
    - Register tool in `ROLE_TOOL_ALLOWLIST["researcher"]`.
 3. **Step 3: Researcher Autonomous Engine & Subagents**:
-   - Implement autonomous tool loop and Hub subagent delegation in `breakdown/roles/researcher.py`.
-   - Validate delegation limits (max 3 workers, 3 rounds, read-only).
+   - Implement autonomous AST baseline mapping, normalization, and provenance validation in `breakdown/roles/researcher.py`.
 4. **Step 4: Auditor Review Refinement**:
    - Update `Auditor.review_research_findings` to act as the independent verification gate for Researcher-emitted findings.
-5. **Step 5: Hosting Adapters & Slack Integration**:
-   - Implement `breakdown/services/server.py` (FastAPI / SSE) and `slack_app_manifest.yaml`.
+5. **Step 5: Automations Architecture & Trigger Ingestion (D42)**:
+   - Implement `breakdown/automations.py` and integrate trigger routing into `breakdown/bot.py`.
+   - Add `breakdown automation draft`, `validate`, and `breakdown bot --trigger` CLI commands.
 6. **Step 6: Comprehensive Test Suite & Gate Verification**:
-   - Add unit tests in `tests/test_roles.py` and `tests/test_tools.py`.
-   - Re-verify Phase 1-3 gates: `pytest`, `ruff check`, `mypy strict`, and `python evals/run.py --offline`.
+   - Add unit tests in `tests/test_automations.py`, `tests/test_bot.py`, `tests/test_roles.py`, `tests/test_memory.py`, and `tests/test_tools.py`.
+   - Re-verify all 5 quality gates: `pytest`, `ruff check`, `mypy strict`, `--check`, and `python evals/run.py --offline`.

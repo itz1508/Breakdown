@@ -38,6 +38,15 @@ Observable behaviors:
 | **G19-3** | Med | `BotRunResult.status` Literal was `Literal["completed", "awaiting_decision", "failed", "cancelled"]` — `"terminal"` (actual `RunState.value` for a finished run) was not in the Literal, causing Pydantic validation failure. | Changed annotation to `Literal["created", "running", "awaiting_decision", "cancelling", "terminal"]` matching all `RunState` enum values. |
 | **G19-4** | Low | 3 researcher tests (setup errors) due to Windows file-lock on stale `.pytest-tmp` SQLite DBs from a lingering Python process. | Killed stale Python processes; removed `.pytest-tmp` before rerunning. All tests pass with clean temp state. |
 
+### Round 20 — Refactor all {slack} to Canonical Automations Drafts (2026-11-19) ✅
+
+| Gap ID | Severity | Discovered Gap | Resolution / Fix |
+|---|---|---|---|
+| **G20-1** | High | Legacy Slack integration specified standalone Socket Mode bot (`slack_app_manifest.yaml`, Slack Bolt adapter) instead of the canonical Automations draft schema matching `open_automation` wire format (`prefillWorkflowData`). | Built `breakdown/automations.py` (`AutomationDraft`, `AutomationWorkflow`). Enforces the 12 exhaustive trigger oneofs: `cron`, `git`, `slackTrigger`, `slackReactionAdded`, `slackChannelCreated`, `emailReceived`, `microsoftTeamsTrigger`, `microsoftTeamsChannelCreated`, `linear`, `webhook`, `pagerduty`, `sentry`. Rejects paraphrased keys (`slackReaction`, `slack_reaction`, `slack`). |
+| **G20-2** | Med | Slack channel ID constraints and Git PR naming not enforced. | Enforced in `breakdown/automations.py`: Triggers (`slackTrigger`, `slackReactionAdded`) accept `C…` (public) or `G…` (private group); actions accept `C…`, `G…`, or `D…` (resolves to owner DM). Git PR scope enforces `ignoreDraftPrs` (rejects singular `ignoreDraftPr`). |
+| **G20-3** | Med | Prompts in YAML exports folded bullet points into invalid single lines when using standard flow formatting. | Implemented YAML custom dumper using `|` block scalar representation for prompts containing newlines, preserving bullet points and Markdown structure without folding. |
+| **G20-4** | Low | BreakdownBot lacked trigger payload ingestion for event-driven automation execution. | Implemented `BreakdownBot.parse_trigger()`, `BreakdownBot.emit_slack_action()`, and `BreakdownBot.run_trigger_stream()`. Integrated into CLI via `breakdown bot --trigger <key> --trigger-payload <json>` and `breakdown automation draft/validate`. |
+
 ---
 
 ## 3. Progress
@@ -49,8 +58,9 @@ Observable behaviors:
 - [x] Task 3: Researcher autonomous engine (`breakdown/roles/researcher.py`) with AST baseline mapping, evidence normalization, and provenance validation.
 - [x] Task 4: Auditor review gate alignment (`breakdown/roles/auditor.py`) consuming Researcher's pre-normalized findings and baseline map.
 - [x] Task 5: Memory conventions & helpers for baseline maps (`store_baseline_map`, `get_baseline_map` in `breakdown/memory.py`).
-- [x] Task 6: Refactored: Breakdown Bot runtime (`breakdown/bot.py`, CLI `breakdown bot`) with intent parsing, `BotEvent` streaming, decision routing, and session management.
-- [x] Task 7: Comprehensive test suite verification (292 tests pass, 16/16 offline evals, ruff clean, mypy strict clean).
+- [x] Task 6: Breakdown Bot runtime (`breakdown/bot.py`, CLI `breakdown bot`) with intent parsing, `BotEvent` streaming, decision routing, and session management.
+- [x] Task 7: Comprehensive test suite verification (295 tests pass, 16/16 offline evals, ruff clean, mypy strict clean).
+- [x] Task 8: Refactor all {slack} into canonical Automations Drafts (`breakdown/automations.py`, CLI `breakdown automation draft/validate`, trigger ingestion in `breakdown/bot.py`, 33 unit tests in `tests/test_automations.py`). (Decision D42)
 
 ---
 
@@ -66,6 +76,8 @@ Observable behaviors:
 
 - **Decision D39**: Build-Baseline Mapping & Evidence Normalization inventory established; 5 advanced capabilities mapped to Anthropic cookbook patterns. (2026-11-19 / ExecPlan)
 - **Decision D40**: Researcher owns `BaselineMap` and `NormalizedEvidence` authoring within `ResearchRecord`; Auditor's `review_research_findings` acts as independent verification gate. Offline-first fallback implemented for vector search. (2026-11-19 / ExecPlan)
+- **Decision D41**: Breakdown Bot pattern replaces generic Slack bot. Round 19 gap fixes accepted. (2026-11-19 / ExecPlan, commit `0891091`)
+- **Decision D42**: Refactor all `{slack}` integrations and specifications from standalone Socket Mode bot manifests into canonical Automations drafts and wire format matching `open_automation` (`prefillWorkflowData`). Enforce exhaustive trigger oneofs (`cron`, `git`, `slackTrigger`, `slackReactionAdded`, `slackChannelCreated`, etc.), C/G channel constraints for triggers, C/G/D for actions, and `ignoreDraftPrs`. (2026-11-19 / ExecPlan)
 
 ---
 
@@ -120,6 +132,16 @@ Observable behaviors:
 - Implement interactive decision routing (`bot.decide()`) and auto-approval capabilities.
 - Integrate into CLI as `breakdown bot "<task>"` with `--stream` and `--auto-approve`.
 - **Named Check**: `uv run pytest tests/test_bot.py` exits 0.
+
+### Task 8: Canonical Automations Drafts & Trigger Integration (`breakdown/automations.py`, D42)
+- Refactor all `{slack}` integrations and specifications from standalone Socket Mode bot manifests into canonical Automations drafts and wire format matching `open_automation` (`prefillWorkflowData`).
+- Implement `AutomationDraft` and `AutomationWorkflow` with exhaustive trigger oneofs (12 canonical keys: `cron`, `git`, `slackTrigger`, `slackReactionAdded`, `slackChannelCreated`, etc.).
+- Enforce Slack channel constraints: `C…`/`G…` for triggers; `C…`/`G…`/`D…` (owner DM) for actions.
+- Enforce git PR scope: `ignoreDraftPrs` (not `ignoreDraftPr`).
+- Preserve prompt formatting with `|` block scalar representation in YAML.
+- Integrate trigger ingestion into `BreakdownBot.parse_trigger()`, `emit_slack_action()`, and `run_trigger_stream()`.
+- Expose via CLI: `breakdown automation draft`, `breakdown automation validate`, and `breakdown bot --trigger`.
+- **Named Check**: `uv run pytest tests/test_automations.py` exits 0.
 
 ---
 

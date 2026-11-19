@@ -438,11 +438,20 @@ OpenAI-compatible endpoints (Databricks key or custom API key).
   "implement..."), typed `BotEvent` streaming (`bot_started`, `intent_resolved`, `stage_started`,
   `stage_completed`, `approval_needed`, `decision_recorded`, `completed`, `failed`), interactive
   decision routing, and cross-session baseline memory inspection.
+- [x] (2026-11-19) D42 — Refactor all {slack} to canonical Automations drafts (`breakdown/automations.py`):
+  Refactored all Slack integrations from legacy standalone Socket Mode manifests into the canonical
+  Automations draft YAML output shape and proto wire format (`prefillWorkflowData` for `open_automation`).
+  Enforces the 12 exhaustive trigger oneof keys (`cron`, `git`, `slackTrigger`, `slackReactionAdded`,
+  `slackChannelCreated`, `emailReceived`, `microsoftTeamsTrigger`, `microsoftTeamsChannelCreated`, `linear`,
+  `webhook`, `pagerduty`, `sentry`), strictly rejecting invented/paraphrased keys. Enforces channel ID
+  disciplines (`C…`/`G…` for triggers; `C…`/`G…`/`D…` resolving to owner DM for actions), git `ignoreDraftPrs`,
+  and `|` block scalar prompt formatting. Integrated trigger ingestion (`parse_trigger`, `emit_slack_action`,
+  `run_trigger_stream`) into `BreakdownBot` and added `automation draft` / `automation validate` CLI commands.
 - Deferred (Phase 3b): parallel worker fan-out (def-1 declares
   execution_order sequential), streaming/resume/hooks capabilities, CMA
   interop, decomposition-audit eval zero (cookbook caveat: "the facts were
   audited; the question decomposition wasn't").
-- Tests: 292 passing tests, 16/16 offline evals with 8/8 blocking zeros holding,
-  mypy strict clean (30 source files), ruff clean. Full gate green.
+- Tests: 328 passing tests (295 baseline + 33 automations/bot trigger tests), 16/16 offline evals with
+  8/8 blocking zeros holding, mypy strict clean (31 source files), ruff clean. Full gate green.
 
 

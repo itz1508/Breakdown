@@ -329,33 +329,103 @@ def _cmd_consolidate_memory(args: argparse.Namespace) -> int:
 
 
 def _cmd_bot(args: argparse.Namespace) -> int:
-    """Run task through BreakdownBot with streaming or summarized output."""
+    """Run task or trigger through BreakdownBot with streaming or summarized output."""
+    import json
+
     from breakdown.bot import BreakdownBot
 
     settings = _settings_from_args(args)
     offline_demo = getattr(args, "offline_demo", False)
+    task_text = getattr(args, "task", "") or ""
+    trigger_key = getattr(args, "trigger", None)
+    trigger_payload_raw = getattr(args, "trigger_payload", None)
+
+    trigger_payload: dict[str, Any] = {}
+    if trigger_payload_raw:
+        try:
+            trigger_payload = json.loads(trigger_payload_raw)
+        except Exception as exc:
+            print(f"error: invalid JSON in --trigger-payload: {exc}")
+            return 1
+
     bot = BreakdownBot.from_settings(
         settings,
         offline_demo=offline_demo,
-        task_text=args.task,
+        task_text=task_text,
         force_unlock=getattr(args, "force_unlock", False),
     )
     stream = getattr(args, "stream", False)
     auto_approve = getattr(args, "auto_approve", False)
 
+    if trigger_key:
+        try:
+            events = bot.run_trigger_stream(trigger_key, trigger_payload, auto_approve=auto_approve)
+            for event in events:
+                stage_part = f" [{event.stage_id}]" if event.stage_id else ""
+                print(f"[{event.event_type}]{stage_part} {event.message}")
+            return 0
+        except Exception as exc:
+            print(f"error running trigger: {exc}")
+            return 1
+
+    if not task_text:
+        print("error: task argument is required when not using --trigger")
+        return 1
+
     if stream:
-        for event in bot.run_stream(args.task, auto_approve=auto_approve):
+        for event in bot.run_stream(task_text, auto_approve=auto_approve):
             stage_part = f" [{event.stage_id}]" if event.stage_id else ""
             print(f"[{event.event_type}]{stage_part} {event.message}")
         return 0
     else:
-        result = bot.run(args.task, auto_approve=auto_approve)
+        result = bot.run(task_text, auto_approve=auto_approve)
         print(f"bot status: {result.status}")
         print(f"run_id: {result.run_id}")
         if result.pending_approval:
             print(f"pending approval: {result.pending_approval} (actions: {', '.join(result.allowed_actions)})")
         print(result.report_summary)
         return 0
+
+
+def _cmd_automation(args: argparse.Namespace) -> int:
+    """Manage and validate Antigravity Automations draft definitions (D42)."""
+    import yaml
+
+    from breakdown.automations import (
+        AutomationDraft,
+        build_slack_automation_draft,
+    )
+
+    if args.automation_action == "draft":
+        draft = build_slack_automation_draft(
+            name=args.name,
+            channel_id=args.slack_channel,
+            prompt=args.prompt,
+            description=args.description,
+            response_channel_id=getattr(args, "response_channel", None),
+        )
+        if getattr(args, "json", False):
+            print(draft.to_json())
+        else:
+            print(draft.to_yaml())
+        return 0
+
+    elif args.automation_action == "validate":
+        path = Path(args.path)
+        if not path.is_file():
+            print(f"error: file not found: {path}")
+            return 1
+        with path.open("r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+        try:
+            AutomationDraft.model_validate(data)
+            print(f"automation valid: {path}")
+            return 0
+        except Exception as exc:
+            print(f"automation invalid: {exc}")
+            return 1
+
+    return 1
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -406,10 +476,29 @@ def main(argv: list[str] | None = None) -> int:
     _add_runtime_args(memory_show_p, mutating=False)
 
     bot_p = subparsers.add_parser("bot", help="execute a task through BreakdownBot with streaming events")
-    bot_p.add_argument("task", help="task to execute (e.g. 'go research vector indexing', 'go plan auth')")
+    bot_p.add_argument("task", nargs="?", default="", help="task to execute (e.g. 'go research vector indexing')")
+    bot_p.add_argument("--trigger", default=None, help="trigger key name (e.g. slackTrigger, slackReactionAdded)")
+    bot_p.add_argument("--trigger-payload", default=None, help="JSON-encoded trigger payload")
     bot_p.add_argument("--stream", action="store_true", help="stream live BotEvents to stdout")
     bot_p.add_argument("--auto-approve", action="store_true", help="auto-approve decision gates for unattended runs")
     _add_runtime_args(bot_p, mutating=True)
+
+    automation_p = subparsers.add_parser("automation", help="draft and validate Antigravity Automations (D42)")
+    automation_sub = automation_p.add_subparsers(dest="automation_action", required=True)
+    draft_p = automation_sub.add_parser("draft", help="generate a reviewed Automations draft")
+    draft_p.add_argument("--name", required=True, help="name of the automation")
+    draft_p.add_argument("--slack-channel", required=True, help="Slack trigger channel ID (must start with C or G)")
+    draft_p.add_argument("--prompt", required=True, help="prompt instruction executed by the agent")
+    draft_p.add_argument("--description", default="", help="optional description")
+    draft_p.add_argument(
+        "--response-channel", default=None, help="optional Slack action destination channel ID (C, G, or D)"
+    )
+    draft_p.add_argument("--json", action="store_true", help="output wire format proto JSON instead of YAML")
+
+    validate_p = automation_sub.add_parser(
+        "validate", help="validate an automation YAML/JSON file against canonical schema"
+    )
+    validate_p.add_argument("path", help="path to automation file to validate")
 
     args = parser.parse_args(argv)
     if args.check:
@@ -419,7 +508,7 @@ def main(argv: list[str] | None = None) -> int:
         settings = Settings() if workflow_path is None else Settings(workflow_path=workflow_path)
         return _run_check(settings)
     if not args.command:
-        parser.error("a command is required (run, resume, decide, cancel, status, bot) or use --check")
+        parser.error("a command is required (run, resume, decide, cancel, status, bot, automation) or use --check")
 
     handlers = {
         "run": _cmd_run,
@@ -430,6 +519,7 @@ def main(argv: list[str] | None = None) -> int:
         "memory": _cmd_memory,
         "consolidate-memory": _cmd_consolidate_memory,
         "bot": _cmd_bot,
+        "automation": _cmd_automation,
     }
     try:
         return handlers[args.command](args)
