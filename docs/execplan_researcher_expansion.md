@@ -6,27 +6,37 @@ This ExecPlan conforms to the OpenAI Cookbook discipline ([Codex ExecPlans](http
 
 ## 1. Purpose / Big Picture
 
-After this work, a user can dispatch complex, multi-question research requests to Breakdown. The Researcher role autonomously drives investigation using canonical and semantic vector search tools, decomposes multi-question scope across parallel read-only subagents, produces an authoritative `BaselineMap` (repository scaffolding and file-to-responsibility inventory) and verified `NormalizedEvidence`, and can be hosted as an independent completion bot (FastAPI SSE, Modal scale-to-zero, or Slack Socket Mode bot) with cross-session memory stores. The Auditor in Stage 4 acts as an independent governance gate validating the Researcher's pre-normalized findings.
+After this work, a user can dispatch complex, multi-question research requests to Breakdown. The Researcher role autonomously drives investigation using canonical and semantic vector search tools, produces an authoritative `BaselineMap` (repository scaffolding and file-to-responsibility inventory) and verified `NormalizedEvidence`, and runs as an independent completion bot (`breakdown bot`) with cross-session memory stores. The Auditor in Stage 4 acts as an independent governance gate validating the Researcher's pre-normalized findings.
 
 Observable behaviors:
 - `python -m breakdown --check` reports all 8 stages aligned with full produces coverage.
 - The Researcher outputs a structured `BaselineMap` containing verified repository modules and scaffolding entries.
-- Multi-question research runs dispatch up to 3 bounded parallel sub-investigations over read-only tools and aggregate findings without polling.
 - Semantic repo search (`semantic_search`) queries vector embeddings when available and falls back cleanly to local lexical search when offline.
-- Slack command `/research <topic>` or FastAPI `POST /sessions/{id}/messages` streams SSE updates and produces a complete research record.
+- `breakdown bot "<task>"` with `--stream` and `--auto-approve` runs the full workflow as a native bot.
 
 ---
 
-## 2. Gap Review (Round 18 — Found and Fixed)
+## 2. Gap Review
+
+### Round 18 — Gaps Found and Fixed (2026-11-19)
 
 | Gap ID | Severity | Discovered Gap | Resolution / Fix |
 |---|---|---|---|
-| **G1** | High | `breakdown.yaml` declares `produces: research_response` for Stage 3; moving keys outside `ResearchRecord` would break contract alignment and produces-coverage invariants. | Embed `baseline_map: BaselineMap | None = None` and `normalized_evidence: tuple[NormalizedEvidence, ...] = ()` directly inside `ResearchRecord` (which is the authoritative schema for `research_response`). Zero definition drift; 100% contract compliance. |
+| **G1** | High | `breakdown.yaml` declares `produces: research_response` for Stage 3; moving keys outside `ResearchRecord` would break contract alignment and produces-coverage invariants. | Embed `baseline_map: BaselineMap \| None = None` and `normalized_evidence: tuple[NormalizedEvidence, ...] = ()` directly inside `ResearchRecord` (which is the authoritative schema for `research_response`). Zero definition drift; 100% contract compliance. |
 | **G2** | High | `NormalizedEvidence` in `models.py` was defined below `FindingsReviewOutput` and lacked provenance fields (only had `evidence_ref`, `normalized_form`). | Enhance `NormalizedEvidence` with `source_identity`, `source_location`, and `provenance_preserved`, and declare it prior to `ResearchRecord`. |
-| **G3** | Med | Databricks AI Search vector index (`breakdown_knowledge_index`) requires Databricks SDK credentials, which are not present in local test environments. | Build `breakdown/tools/semantic_search.py` with dual-mode dispatch: calls Databricks Vector Search if configured, otherwise falls back to local AST/content search so all offline tests pass. |
-| **G4** | Med | Multi-question delegation in `Researcher` currently runs as a single serialized turn. | Implement bounded subagent orchestration in `Researcher.execute_research` using the Hub message-passing pattern, capped by `breakdown.yaml` limits (`max_workers: 3`, `max_rounds: 3`). |
-| **G5** | Low | Missing Slack app manifest and hosting scripts in the repository. | Add `slack_app_manifest.yaml` (Socket Mode) and `breakdown/services/server.py` (FastAPI SSE). |
-| **G6** | Low | Cross-session memory conventions needed for baseline maps. | Add helper functions in `breakdown/memory.py` for reading/writing `baseline_maps/<repo_id>.json`. |
+| **G3** | Med | Databricks AI Search vector index (`breakdown_knowledge_index`) requires Databricks SDK credentials, which are not present in local test environments. | Build `breakdown/semantic_search.py` (at repo root, not in a `tools/` sub-package) with dual-mode dispatch: calls Databricks Vector Search if configured, otherwise falls back to local AST/content search so all offline tests pass. |
+| **G4** | Med | Multi-question delegation in `Researcher` currently runs as a single serialized turn. Hub pattern deferred to future work. | Implement provenance validation and evidence normalization in `Researcher.execute()`. Hub/async fan-out is deferred — single-turn LLM call with provenance enforcement is the correct scope for this refactor. |
+| **G5** | Low | Missing Slack app manifest and hosting scripts — deferred per user direction "do not build slack bot". | Refactored: Breakdown Bot (`breakdown/bot.py`, `breakdown bot` CLI) implements the bot runtime pattern natively without requiring Slack. |
+| **G6** | Low | Cross-session memory conventions needed for baseline maps. | Add `store_baseline_map` and `get_baseline_map` helpers in `breakdown/memory.py`. Covered by named check: `pytest tests/test_memory.py -k baseline_map`. |
+
+### Round 19 — Gaps Found and Fixed (2026-11-19)
+
+| Gap ID | Severity | Discovered Gap | Resolution / Fix |
+|---|---|---|---|
+| **G19-1** | High | Task 5 named check (`pytest tests/test_memory.py -k baseline_map`) collected 0 tests — the `baseline_map` test functions were not added to `tests/test_memory.py`. | Added `test_store_baseline_map_roundtrip`, `test_get_baseline_map_returns_none_when_missing`, and `test_store_baseline_map_latest_revision_wins` to `tests/test_memory.py`. Named check now collects and passes 3 tests. |
+| **G19-2** | Med | Task 2 referenced file path `breakdown/tools/semantic_search.py` but the actual implementation lives at `breakdown/semantic_search.py` (no `tools/` sub-package exists). | Corrected plan text in Task 2 and Gap G3 to reflect the actual path `breakdown/semantic_search.py`. Code was correct; plan was inaccurate. |
+| **G19-3** | Med | `BotRunResult.status` Literal was `Literal["completed", "awaiting_decision", "failed", "cancelled"]` — `"terminal"` (actual `RunState.value` for a finished run) was not in the Literal, causing Pydantic validation failure. | Changed annotation to `Literal["created", "running", "awaiting_decision", "cancelling", "terminal"]` matching all `RunState` enum values. |
+| **G19-4** | Low | 3 researcher tests (setup errors) due to Windows file-lock on stale `.pytest-tmp` SQLite DBs from a lingering Python process. | Killed stale Python processes; removed `.pytest-tmp` before rerunning. All tests pass with clean temp state. |
 
 ---
 
@@ -78,11 +88,12 @@ Observable behaviors:
 - Update `ResearchRecord` to include `baseline_map: BaselineMap | None = None` and `normalized_evidence: tuple[NormalizedEvidence, ...] = ()`.
 - **Named Check**: `uv run python -c "from breakdown.models import BaselineMap, ScaffoldingEntry, ResearchRecord"` exits 0.
 
-### Task 2: Semantic Search Tool (`breakdown/tools/semantic_search.py`)
+### Task 2: Semantic Search Tool (`breakdown/semantic_search.py`)
 - Implement `semantic_search(request: SemanticSearchRequest, root: Path, ...) -> SemanticSearchResult`.
 - When Databricks Vector Search SDK is available and configured, query `breakdown_knowledge_index`.
 - If offline, perform local text/regex indexing across files in `root`.
 - Register in `breakdown/tools.py` under `TOOLS["semantic_search"]` and update `ROLE_TOOL_ALLOWLIST`.
+- File lives at `breakdown/semantic_search.py` (top-level package module, not in a `tools/` sub-package).
 - **Named Check**: `uv run pytest tests/test_tools.py -k semantic_search` exits 0.
 
 ### Task 3: Researcher Autonomous Engine & Subagents (`breakdown/roles/researcher.py`)

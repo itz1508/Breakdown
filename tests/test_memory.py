@@ -1,4 +1,7 @@
-"""Phase 3b — D36: cross-run memory store, canonical memory tools, containment."""
+"""Phase 3b — D36: cross-run memory store, canonical memory tools, containment.
+
+Also covers D40: baseline_map persistence helpers (store_baseline_map / get_baseline_map).
+"""
 
 from __future__ import annotations
 
@@ -6,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from breakdown.memory import MemoryStore, validate_memory_path
-from breakdown.models import MemoryDocument
+from breakdown.memory import MemoryStore, get_baseline_map, store_baseline_map, validate_memory_path
+from breakdown.models import BaselineMap, MemoryDocument, ScaffoldingEntry
 from breakdown.roles import RoleToolkit
 from breakdown.tools import ToolNotAuthorized, dispatch_tool
 
@@ -117,3 +120,78 @@ def test_dispatch_memory_tools_and_allowlists(tmp_path: Path) -> None:
             "memory_read",
             "memory_search",
         }
+
+
+# ---------------------------------------------------------------------------
+# D40: baseline_map persistence helpers (store_baseline_map / get_baseline_map)
+# ---------------------------------------------------------------------------
+
+
+def _make_baseline(repo_id: str = "my-repo") -> BaselineMap:
+    """Build a minimal valid BaselineMap for testing."""
+    from datetime import UTC, datetime
+
+    entry = ScaffoldingEntry(
+        path="src/util.py",
+        category="module",
+        responsibility="Utility helpers",
+        exports=("helper_fn",),
+    )
+    return BaselineMap(
+        repository_identity=repo_id,
+        entries=(entry,),
+        created_at=datetime.now(UTC),
+    )
+
+
+def test_store_baseline_map_roundtrip(tmp_path: Path) -> None:
+    """store_baseline_map writes JSON; get_baseline_map deserialises it back."""
+    store = MemoryStore(tmp_path)
+    baseline = _make_baseline("test-repo-alpha")
+
+    revision = store_baseline_map(store, baseline, run_id="run-1")
+    assert revision == 1, "first write should produce revision 1"
+
+    recovered = get_baseline_map(store, "test-repo-alpha")
+    assert recovered is not None, "baseline map should be found after storing"
+    assert recovered.repository_identity == "test-repo-alpha"
+    assert len(recovered.entries) == 1
+    assert recovered.entries[0].path == "src/util.py"
+    assert recovered.entries[0].responsibility == "Utility helpers"
+
+
+def test_get_baseline_map_returns_none_when_missing(tmp_path: Path) -> None:
+    """get_baseline_map returns None for an unseen repository identity."""
+    store = MemoryStore(tmp_path)
+    result = get_baseline_map(store, "ghost-repo")
+    assert result is None
+
+
+def test_store_baseline_map_latest_revision_wins(tmp_path: Path) -> None:
+    """Storing a new baseline for the same repo ID creates a new revision; get returns head."""
+    from datetime import UTC, datetime
+
+    store = MemoryStore(tmp_path)
+    baseline_v1 = _make_baseline("versioned-repo")
+
+    entry_v2 = ScaffoldingEntry(
+        path="src/engine.py",
+        category="module",
+        responsibility="Core engine",
+        exports=("Engine",),
+    )
+    baseline_v2 = BaselineMap(
+        repository_identity="versioned-repo",
+        entries=(entry_v2,),
+        created_at=datetime.now(UTC),
+    )
+
+    rev1 = store_baseline_map(store, baseline_v1, run_id="run-1")
+    rev2 = store_baseline_map(store, baseline_v2, run_id="run-2")
+    assert rev2 == rev1 + 1, "second store should increment revision"
+
+    head = get_baseline_map(store, "versioned-repo")
+    assert head is not None
+    # Head should reflect the second (latest) baseline
+    assert len(head.entries) == 1
+    assert head.entries[0].path == "src/engine.py"
