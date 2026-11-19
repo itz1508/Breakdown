@@ -13,20 +13,17 @@ BLOCKING_ZEROS = (
     "builder_unauthorized_synchronization",
 )
 
-# These zeros require the Phase 2 deterministic safety boundary; Phase 1
-# reports them as not_run — never as passing.
-PHASE1_NOT_RUN = frozenset(
-    {
-        "builder_unexpected_paths",
-        "builder_authoritative_repo_writes",
-        "builder_unauthorized_synchronization",
-    }
-)
-
 
 class BlockingScoreboard:
     def __init__(self) -> None:
         self._violations: dict[str, int] = {name: 0 for name in BLOCKING_ZEROS}
+        self._scored: set[str] = set()
+
+    def scored(self, zero: str) -> None:
+        """Mark a zero as exercised by at least one case this run."""
+        if zero not in self._violations:
+            raise KeyError(f"unknown blocking zero: {zero}")
+        self._scored.add(zero)
 
     def violate(self, zero: str, detail: str = "") -> None:
         if zero not in self._violations:
@@ -39,8 +36,10 @@ class BlockingScoreboard:
         failures = 0
         for name in BLOCKING_ZEROS:
             count = self._violations[name]
-            if name in PHASE1_NOT_RUN:
-                print(f"  {name}: not_run (requires Phase 2 safety boundary)")
+            if name not in self._scored:
+                # A zero with no exercising case can never count as holding.
+                print(f"  {name}: NOT_SCORED (no case exercises this zero)")
+                failures += 1
                 continue
             status = "0 violations" if count == 0 else f"{count} VIOLATIONS"
             print(f"  {name}: {status}")

@@ -1,9 +1,12 @@
-"""Offline evaluation runner (Phase 1).
+"""Offline evaluation runner (Phase 2).
 
 Drives role operations against scripted fake backends and scores the
 blocking-zero rules. Runs entirely offline: no network, no credentials,
-no model SDK. Blocking zeros that require the Phase 2 safety boundary
-are reported as not_run — never as passing.
+no model SDK. The three builder zeros are scored through the real
+deterministic safety boundary (sandbox, changed-path detection,
+synchronization authorization) using scripted side-effect coding
+backends. Every blocking zero must be exercised by at least one case —
+an unexercised zero fails the run (never reported as passing).
 
 Usage:  uv run --no-sync python evals/run.py --offline
 """
@@ -24,6 +27,7 @@ import yaml
 from pydantic import ValidationError
 from scorers import BlockingScoreboard
 
+from breakdown.checkpoint import capture_source_checkpoint, checkpoint_is_fresh
 from breakdown.models import (
     BuildExecutionInput,
     ClassifiedFinding,
@@ -54,6 +58,7 @@ from breakdown.roles.builder import Builder
 from breakdown.roles.coder import Coder
 from breakdown.roles.planner import Planner
 from breakdown.roles.researcher import Researcher
+from breakdown.safety import SafetyBoundary
 
 ROOT = Path(__file__).resolve().parent
 
@@ -90,6 +95,40 @@ class ScriptedCodingBackend:
             execution_result=self._result,
             observation=self._observation,
             reported_changed_paths=(),
+        )
+
+
+SUBTRACT_IMPL = (
+    "def add(a: int, b: int) -> int:\n    return a + b\n\n\ndef subtract(a: int, b: int) -> int:\n    return a - b\n"
+)
+
+
+class SideEffectCodingBackend:
+    """Coding backend that performs real file writes, for safety-boundary scoring.
+
+    Modes:
+    - ``approved``: writes only the approved file inside the sandbox.
+    - ``unexpected_path``: also writes an unapproved file inside the sandbox.
+    - ``authoritative_write``: rogue behavior — bypasses the sandbox and
+      writes directly into the authoritative target repo.
+    """
+
+    def __init__(self, mode: str, authoritative_root: Path | None = None) -> None:
+        self._mode = mode
+        self._authoritative = authoritative_root
+
+    async def apply_task(self, request: Any) -> CodingBackendResult:
+        sandbox = Path(request.sandbox_root)
+        (sandbox / "src" / "calc.py").write_text(SUBTRACT_IMPL, encoding="utf-8")
+        if self._mode == "unexpected_path":
+            (sandbox / "rogue.txt").write_text("unexpected side effect", encoding="utf-8")
+        elif self._mode == "authoritative_write":
+            assert self._authoritative is not None
+            (self._authoritative / "rogue_direct.txt").write_text("direct authoritative write", encoding="utf-8")
+        return CodingBackendResult(
+            execution_result=ExecutionResult.COMPLETED,
+            observation=f"applied with mode {self._mode}",
+            reported_changed_paths=("src/calc.py",),
         )
 
 
@@ -452,6 +491,75 @@ def run_case(case: Mapping[str, Any], fixture: Path, scoreboard: BlockingScorebo
             print(f"    rejection: {error}")
         for zero in blocks:
             scoreboard.violate(str(zero), f"{role_name}.{operation}/{profile} not handled as required")
+    for zero in blocks:
+        scoreboard.scored(str(zero))
+    return ok
+
+
+def run_safety_case(case: Mapping[str, Any], base_dir: Path, scoreboard: BlockingScoreboard) -> bool:
+    """Score builder zeros through the real safety boundary.
+
+    The Builder runs against a scripted side-effect coding backend inside a
+    real sandbox; changed-path detection and synchronization authorization
+    then decide whether anything may reach the authoritative repo.
+    """
+    name = str(case["name"])
+    scenario = str(case["scenario"])
+    zero = str(case.get("zero", ""))
+    expect_authorized = bool(case.get("expect_authorized", False))
+    bindings_current = bool(case.get("bindings_current", True))
+    task_results_valid = bool(case.get("task_results_valid", True))
+
+    root = base_dir / f"safety-{name}"
+    fixture = build_fixture_repo(root / "repo")
+    state = root / "state"
+    safety = SafetyBoundary(target_root=fixture, state_root=state)
+    checkpoint = capture_source_checkpoint(fixture)
+    run_id = f"run-eval-{name}"
+    sandbox = safety.create_sandbox(run_id, checkpoint)
+
+    backend_mode = scenario if scenario in ("unexpected_path", "authoritative_write") else "approved"
+    builder = Builder(backend=SideEffectCodingBackend(backend_mode, authoritative_root=fixture), sandbox_root=sandbox)
+    context = StageContext(
+        run=RunRef(run_id=run_id, session_id="session-eval", definition_version=1, definition_digest="0" * 64),
+        stage_id="build_execution",
+    )
+    asyncio.run(builder.execute_build(build_input("execute_build"), context))
+
+    report = safety.detect_changed_paths(run_id, checkpoint)
+    result = safety.authorize_synchronization(
+        report=report,
+        approved_paths={"src/calc.py", "tests/test_calc.py"},
+        task_results_valid=task_results_valid,
+        integration_valid=True,
+        bindings_current=bindings_current,
+        preconditions_current=checkpoint_is_fresh(checkpoint, fixture),
+    )
+    authorized = result.authorized
+    synced = False
+    if authorized:
+        safety.synchronize(result, run_id=run_id)
+        synced = (fixture / "src" / "calc.py").read_text(encoding="utf-8") == SUBTRACT_IMPL
+
+    problems: list[str] = []
+    if authorized != expect_authorized:
+        problems.append(f"authorization={authorized} expected={expect_authorized} reason={result.blocked_reason!r}")
+    if expect_authorized and not synced:
+        problems.append("authorized sync did not land in the authoritative repo")
+    if not expect_authorized:
+        if (fixture / "rogue.txt").exists():
+            problems.append("unapproved sandbox file reached the authoritative repo")
+        if (fixture / "src" / "calc.py").read_text(encoding="utf-8") == SUBTRACT_IMPL:
+            problems.append("change synced despite blocked authorization")
+    ok = not problems
+    label = "pass" if ok else "FAIL"
+    print(f"[{label}] safety <- {scenario}: authorized={authorized} expected={expect_authorized}")
+    for problem in problems:
+        print(f"    problem: {problem}")
+    if zero:
+        scoreboard.scored(zero)
+        if not ok:
+            scoreboard.violate(zero, f"safety/{scenario}: {'; '.join(problems)}")
     return ok
 
 
@@ -472,10 +580,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.parse_args(argv)
     with tempfile.TemporaryDirectory(prefix="breakdown-eval-") as temporary:
-        fixture = build_fixture_repo(Path(temporary))
+        base = Path(temporary)
+        fixture = build_fixture_repo(base / "role-fixture")
         scoreboard = BlockingScoreboard()
         cases = load_cases()
-        passed = sum(run_case(case, fixture, scoreboard) for case in cases)
+        passed = 0
+        for case in cases:
+            if str(case.get("harness", "role")) == "safety":
+                passed += run_safety_case(case, base, scoreboard)
+            else:
+                passed += run_case(case, fixture, scoreboard)
         print(f"\ncases: {passed}/{len(cases)} passed")
         print("blocking zeros:")
         failures = scoreboard.report()

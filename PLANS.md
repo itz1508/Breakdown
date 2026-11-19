@@ -293,5 +293,15 @@ separate binding milestone.
   'true'/'false'/'unknown' literal. 10 new tests incl. subprocess e2e: separate CLI
   processes drive run→decide→resume→decide→resume to success with DEMO_CHANGE.md
   synchronized into the target, plus cancel, lock-contention, and error paths.
-- [ ] P2-T10 evals expansion (Gate C)
+- [x] (2026-11-18) P2-T10 evals expansion (Gate C) — all 8 blocking zeros now scored:
+  new `harness: safety` cases run the Builder against scripted side-effect coding
+  backends (approved write, unexpected sandbox path, rogue direct authoritative write)
+  inside a real sandbox and score detection + synchronization authorization through
+  the real SafetyBoundary: builder_unexpected_paths, builder_authoritative_repo_writes,
+  builder_unauthorized_synchronization (stale-approval bindings_current=false and
+  invalid task results) — each blocked as required, plus a positive control proving an
+  authorized sync lands in the target. PHASE1_NOT_RUN retired: the scoreboard now
+  requires every zero to be exercised (NOT_SCORED fails the run). 16/16 eval cases,
+  8/8 zeros at 0 violations. README.md created (quickstart incl. offline demo CLI
+  flow); evals/README.md updated. 3 new scoreboard-semantics tests.
 

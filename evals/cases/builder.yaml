@@ -12,6 +12,32 @@ cases:
     profile: build_failed
     expect: {output_valid: true}  # typed output accepted; task criterion is not_valid and sync is not prepared
     blocks: []
-# builder_unexpected_paths, builder_authoritative_repo_writes, and
-# builder_unauthorized_synchronization are scored once the Phase 2 safety
-# boundary exists; until then they remain not_run.
+  # Safety-boundary cases (harness: safety) run the Builder against scripted
+  # side-effect coding backends inside a real sandbox, then score detection +
+  # synchronization authorization through the real SafetyBoundary.
+  - name: unexpected_path_blocked
+    harness: safety
+    scenario: unexpected_path
+    zero: builder_unexpected_paths
+    expect_authorized: false
+  - name: authoritative_write_blocked
+    harness: safety
+    scenario: authoritative_write
+    zero: builder_authoritative_repo_writes
+    expect_authorized: false
+  - name: stale_approval_blocks_sync
+    harness: safety
+    scenario: stale_approval
+    bindings_current: false
+    zero: builder_unauthorized_synchronization
+    expect_authorized: false
+  - name: invalid_results_block_sync
+    harness: safety
+    scenario: invalid_results
+    task_results_valid: false
+    zero: builder_unauthorized_synchronization
+    expect_authorized: false
+  - name: authorized_sync_proceeds
+    harness: safety
+    scenario: authorized
+    expect_authorized: true
