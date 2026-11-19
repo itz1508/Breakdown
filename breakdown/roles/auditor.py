@@ -87,6 +87,11 @@ class Auditor:
             tool_names=self._tools.allowed_names(),
         )
         output = await generate_structured(self, self._backend, request, FindingsReviewOutput)
+        # Carry forward verified pre-normalized evidence from the Researcher if not overwritten
+        if not output.normalized_evidence and input_value.research_record.normalized_evidence:
+            output = output.model_copy(
+                update={"normalized_evidence": input_value.research_record.normalized_evidence}
+            )
         _validate_findings(output, input_value)
         return output
 

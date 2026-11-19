@@ -272,6 +272,10 @@ def _cmd_memory(args: argparse.Namespace) -> int:
     if document is None:
         print(f"memory not found: {args.path} (revision {args.revision or 'head'})")
         return 1
+    print(document.content)
+    return 0
+
+
 def _cmd_consolidate_memory(args: argparse.Namespace) -> int:
     """D37: consolidate cross-run memory.
 
@@ -281,7 +285,7 @@ def _cmd_consolidate_memory(args: argparse.Namespace) -> int:
     Without ``--live``: prints a refusal and exits nonzero.
     """
     from breakdown.bindings import BackendBindingStore
-    from breakdown.bootstrap import build_openai_client, resolve_model
+    from breakdown.live_backend import build_openai_client, resolve_model
     from breakdown.memory import MemoryStore
 
     settings = _settings_from_args(args)
@@ -310,7 +314,8 @@ def _cmd_consolidate_memory(args: argparse.Namespace) -> int:
         return 1
 
     # Build the consolidation input
-    lessons_content = "\n".join(doc.content for doc in lessons)
+    lesson_docs = [store.read(item.path, item.revision) for item in lessons]
+    lessons_content = "\n".join(doc.content for doc in lesson_docs if doc is not None)
     input_data = {
         "consolidated": lessons_content,
         "changes_summary": f"consolidated {len(lessons)} lesson documents",
@@ -321,6 +326,36 @@ def _cmd_consolidate_memory(args: argparse.Namespace) -> int:
 
     print(f"consolidated {len(lessons)} lesson documents into consolidated/lessons.md")
     return 0
+
+
+def _cmd_bot(args: argparse.Namespace) -> int:
+    """Run task through BreakdownBot with streaming or summarized output."""
+    from breakdown.bot import BreakdownBot
+
+    settings = _settings_from_args(args)
+    offline_demo = getattr(args, "offline_demo", False)
+    bot = BreakdownBot.from_settings(
+        settings,
+        offline_demo=offline_demo,
+        task_text=args.task,
+        force_unlock=getattr(args, "force_unlock", False),
+    )
+    stream = getattr(args, "stream", False)
+    auto_approve = getattr(args, "auto_approve", False)
+
+    if stream:
+        for event in bot.run_stream(args.task, auto_approve=auto_approve):
+            stage_part = f" [{event.stage_id}]" if event.stage_id else ""
+            print(f"[{event.event_type}]{stage_part} {event.message}")
+        return 0
+    else:
+        result = bot.run(args.task, auto_approve=auto_approve)
+        print(f"bot status: {result.status}")
+        print(f"run_id: {result.run_id}")
+        if result.pending_approval:
+            print(f"pending approval: {result.pending_approval} (actions: {', '.join(result.allowed_actions)})")
+        print(result.report_summary)
+        return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -370,6 +405,12 @@ def main(argv: list[str] | None = None) -> int:
     memory_show_p.add_argument("--revision", type=int, default=None, help="pin an earlier revision (default: head)")
     _add_runtime_args(memory_show_p, mutating=False)
 
+    bot_p = subparsers.add_parser("bot", help="execute a task through BreakdownBot with streaming events")
+    bot_p.add_argument("task", help="task to execute (e.g. 'go research vector indexing', 'go plan auth')")
+    bot_p.add_argument("--stream", action="store_true", help="stream live BotEvents to stdout")
+    bot_p.add_argument("--auto-approve", action="store_true", help="auto-approve decision gates for unattended runs")
+    _add_runtime_args(bot_p, mutating=True)
+
     args = parser.parse_args(argv)
     if args.check:
         if args.command:
@@ -378,7 +419,7 @@ def main(argv: list[str] | None = None) -> int:
         settings = Settings() if workflow_path is None else Settings(workflow_path=workflow_path)
         return _run_check(settings)
     if not args.command:
-        parser.error("a command is required (run, resume, decide, cancel, status) or use --check")
+        parser.error("a command is required (run, resume, decide, cancel, status, bot) or use --check")
 
     handlers = {
         "run": _cmd_run,
@@ -388,6 +429,7 @@ def main(argv: list[str] | None = None) -> int:
         "status": _cmd_status,
         "memory": _cmd_memory,
         "consolidate-memory": _cmd_consolidate_memory,
+        "bot": _cmd_bot,
     }
     try:
         return handlers[args.command](args)

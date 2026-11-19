@@ -79,8 +79,8 @@ def test_dispatch_unknown_tool_denied(repo: Path) -> None:
         dispatch_tool("artifact_write", {}, root=repo)
 
 
-def test_registry_exposes_exactly_six_model_callable_tools() -> None:
-    # D36: three read-only memory tools join the three source tools.
+def test_registry_exposes_model_callable_tools() -> None:
+    # D36: three read-only memory tools join source tools; semantic_search added for Researcher.
     assert set(TOOLS) == {
         "capability_inspect",
         "source_search",
@@ -88,6 +88,7 @@ def test_registry_exposes_exactly_six_model_callable_tools() -> None:
         "memory_list",
         "memory_read",
         "memory_search",
+        "semantic_search",
     }
     for forbidden in (
         "proposal_create",
@@ -108,8 +109,10 @@ def test_role_allowlists_match_matrix() -> None:
         "memory_list",
         "memory_read",
         "memory_search",
+        "semantic_search",
     }
     assert "capability_inspect" in ROLE_TOOL_ALLOWLIST["auditor"]
+    assert "semantic_search" in ROLE_TOOL_ALLOWLIST["auditor"]
     for role in ("auditor", "coder", "planner"):
         assert {"memory_list", "memory_read", "memory_search"} <= set(ROLE_TOOL_ALLOWLIST[role])
 
@@ -118,3 +121,19 @@ def test_tool_definitions_carry_schemas() -> None:
     definitions = tool_definitions()
     assert {definition["name"] for definition in definitions} == set(TOOLS)
     assert all("parameters" in definition for definition in definitions)
+
+
+def test_semantic_search_offline_fallback(repo: Path) -> None:
+    from breakdown.semantic_search import SemanticSearchRequest, semantic_search
+
+    report = semantic_search(SemanticSearchRequest(query="calc add"), root=repo)
+    assert report.mode == "lexical_fallback"
+    assert len(report.matches) >= 1
+    assert report.matches[0].path == "src/calc.py"
+    assert "def add" in report.matches[0].snippet
+
+
+def test_semantic_search_dispatch(repo: Path) -> None:
+    report = dispatch_tool("semantic_search", {"query": "return a + b"}, root=repo)
+    assert len(report.matches) >= 1
+    assert report.matches[0].path == "src/calc.py"

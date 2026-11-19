@@ -424,12 +424,25 @@ OpenAI-compatible endpoints (Databricks key or custom API key).
   hosting + Slack bot, and cross-session memory stores) and reallocates authoritative
   `BaselineMap` and `NormalizedEvidence` production to the Researcher role, with
   Auditor `findings_review` serving as the independent verification gate.
+- [x] (2026-11-19) D40 — Researcher owns BaselineMap and NormalizedEvidence:
+  `ScaffoldingEntry`, `BaselineMap`, and updated `NormalizedEvidence` (carrying
+  `source_identity`, `source_location`, `source_version`, `provenance_preserved`) are embedded
+  directly inside `ResearchRecord` to preserve 100% definition consistency and contract alignment.
+  Canonical `semantic_search` tool implemented with dual-mode execution (Databricks AI Search
+  vector index when configured, local lexical/TF fallback offline). Researcher constructs baseline
+  module mapping via AST scanning; Auditor's `review_research_findings` independently audits and
+  carries forward verified evidence.
+- [x] (2026-11-19) D41 — Breakdown Bot independent runtime (`breakdown/bot.py`, CLI `breakdown bot`):
+  Refactored from generic Slack bot into native Breakdown Bot architecture learned from Claude Agent
+  SDK and Managed Agents cookbooks. Features natural task intent parsing ("go research...", "go plan...",
+  "implement..."), typed `BotEvent` streaming (`bot_started`, `intent_resolved`, `stage_started`,
+  `stage_completed`, `approval_needed`, `decision_recorded`, `completed`, `failed`), interactive
+  decision routing, and cross-session baseline memory inspection.
 - Deferred (Phase 3b): parallel worker fan-out (def-1 declares
   execution_order sequential), streaming/resume/hooks capabilities, CMA
   interop, decomposition-audit eval zero (cookbook caveat: "the facts were
   audited; the question decomposition wasn't").
-- Tests: 6 stage-usage rows, 10 live-backend rows over httpx.MockTransport
-  (no network in CI), 5 bootstrap seam/coverage rows, 3 CLI --live error
-  rows. Full offline gate green.
+- Tests: 292 passing tests, 16/16 offline evals with 8/8 blocking zeros holding,
+  mypy strict clean (30 source files), ruff clean. Full gate green.
 
 

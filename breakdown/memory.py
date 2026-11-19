@@ -21,7 +21,7 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 
 from breakdown.canonical import digest_raw
-from breakdown.models import MemoryDocument, MemorySummary
+from breakdown.models import BaselineMap, MemoryDocument, MemorySummary
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS memory_versions (
@@ -176,3 +176,22 @@ class MemoryStore:
             )
         finally:
             conn.close()
+
+
+def store_baseline_map(store: MemoryStore, baseline_map: BaselineMap, *, run_id: str | None = None) -> int:
+    """Store an authoritative repository BaselineMap in cross-run memory."""
+    path = f"baselines/{baseline_map.repository_identity}.json"
+    content = baseline_map.model_dump_json(indent=2)
+    return store.write(path, content, run_id=run_id)
+
+
+def get_baseline_map(store: MemoryStore, repository_identity: str) -> BaselineMap | None:
+    """Retrieve the head BaselineMap for a repository identity, or None."""
+    path = f"baselines/{repository_identity}.json"
+    doc = store.read(path)
+    if doc is None:
+        return None
+    try:
+        return BaselineMap.model_validate_json(doc.content)
+    except Exception:
+        return None

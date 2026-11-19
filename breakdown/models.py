@@ -380,6 +380,28 @@ class Contradiction(StrictModel):
     evidence_refs: tuple[str, ...] = Field(min_length=1)
 
 
+class ScaffoldingEntry(StrictModel):
+    path: str = Field(min_length=1)
+    category: str = Field(min_length=1)
+    responsibility: str = Field(min_length=1)
+    exports: tuple[str, ...] = ()
+
+
+class BaselineMap(StrictModel):
+    repository_identity: str = Field(min_length=1)
+    entries: tuple[ScaffoldingEntry, ...] = ()
+    created_at: AwareDatetime
+
+
+class NormalizedEvidence(StrictModel):
+    evidence_ref: str = Field(min_length=1)
+    normalized_form: str = Field(min_length=1)
+    source_identity: str = ""
+    source_location: str = ""
+    source_version: str | None = None
+    provenance_preserved: Literal[True] = True
+
+
 class ResearchRecord(StrictModel):
     """Authoritative Research response schema."""
 
@@ -389,6 +411,8 @@ class ResearchRecord(StrictModel):
     evidence: tuple[EvidenceRecord, ...] = ()
     contradictions: tuple[Contradiction, ...] = ()
     fixture_specifications: tuple[FixtureSpecification, ...] = ()
+    baseline_map: BaselineMap | None = None
+    normalized_evidence: tuple[NormalizedEvidence, ...] = ()
 
 
 class ResearchExecutionInput(StrictModel):
@@ -422,12 +446,6 @@ class ClassifiedFinding(StrictModel):
     decision_trace: tuple[DecisionTraceStep, ...] = Field(min_length=1)
     criterion: CriterionResult
     reason: str = Field(min_length=1)
-
-
-class NormalizedEvidence(StrictModel):
-    evidence_ref: str = Field(min_length=1)
-    normalized_form: str = Field(min_length=1)
-    provenance_preserved: Literal[True] = True
 
 
 class FindingsReviewInput(StrictModel):

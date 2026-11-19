@@ -37,6 +37,7 @@ from breakdown.completion import build_completion_record, validate_accepts
 from breakdown.contracts import (
     ContractActivationError,
     ContractRegistry,
+    RoleBackend,
     StageContract,
     activate_role_contract,
 )
@@ -654,7 +655,7 @@ class WorkflowEngine:
         # The builder's self-report (validation_results) is kept as evidence but no longer
         # gates authorization; independent_verification is stored as an artifact.
         verifier = self.role_factory(None).get("verifier")
-        if verifier is not None:
+        if isinstance(verifier, RoleBackend):
             # Assemble verification input from the plan, build output, and sandbox
             vb_input = build_verification_input(run_id, plan, build_output, sandbox or self.stores.safety.target_root)
             vb_request = verification_request(vb_input)

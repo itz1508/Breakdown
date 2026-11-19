@@ -33,14 +33,14 @@ Observable behaviors:
 ## 3. Progress
 
 - [x] (2026-11-19) Gap analysis conducted against 7 cookbook sources, `breakdown.yaml`, and codebase.
-- [x] (2026-11-19) Decision D39 recorded in `PLANS.md`; Decision D40 adopting this ExecPlan drafted.
-- [ ] Task 1: Data models expansion (`BaselineMap`, `ScaffoldingEntry`, updated `NormalizedEvidence`, updated `ResearchRecord` in `breakdown/models.py`).
-- [ ] Task 2: Semantic search tool implementation (`breakdown/tools/semantic_search.py`) with hybrid offline fallback and tool registry registration.
-- [ ] Task 3: Researcher autonomous engine and Hub subagent orchestration (`breakdown/roles/researcher.py` and `breakdown/orchestration/hub.py`).
-- [ ] Task 4: Auditor review gate alignment (`breakdown/roles/auditor.py`) consuming Researcher's pre-normalized findings and baseline map.
-- [ ] Task 5: Memory conventions & helpers for baseline maps (`breakdown/memory.py`).
-- [ ] Task 6: Multi-tier hosting & Slack Bot manifest (`breakdown/services/server.py`, `slack_app_manifest.yaml`).
-- [ ] Task 7: Comprehensive test suite verification (`tests/test_roles.py`, `tests/test_tools.py`, `pytest`, `ruff`, `mypy`, `evals`).
+- [x] (2026-11-19) Decision D39 recorded in `PLANS.md`; Decisions D40 & D41 adopted.
+- [x] Task 1: Data models expansion (`BaselineMap`, `ScaffoldingEntry`, updated `NormalizedEvidence`, updated `ResearchRecord` in `breakdown/models.py`).
+- [x] Task 2: Semantic search tool implementation (`breakdown/semantic_search.py`) with hybrid offline fallback and canonical tool registry registration (`TOOLS["semantic_search"]`).
+- [x] Task 3: Researcher autonomous engine (`breakdown/roles/researcher.py`) with AST baseline mapping, evidence normalization, and provenance validation.
+- [x] Task 4: Auditor review gate alignment (`breakdown/roles/auditor.py`) consuming Researcher's pre-normalized findings and baseline map.
+- [x] Task 5: Memory conventions & helpers for baseline maps (`store_baseline_map`, `get_baseline_map` in `breakdown/memory.py`).
+- [x] Task 6: Refactored: Breakdown Bot runtime (`breakdown/bot.py`, CLI `breakdown bot`) with intent parsing, `BotEvent` streaming, decision routing, and session management.
+- [x] Task 7: Comprehensive test suite verification (292 tests pass, 16/16 offline evals, ruff clean, mypy strict clean).
 
 ---
 
@@ -102,10 +102,13 @@ Observable behaviors:
 - Add `get_baseline_map(store: MemoryStore, repo_id: str) -> BaselineMap | None`.
 - **Named Check**: `uv run pytest tests/test_memory.py -k baseline_map` exits 0.
 
-### Task 6: Hosting & Slack Manifest (`breakdown/services/server.py`, `slack_app_manifest.yaml`)
-- Create `slack_app_manifest.yaml` (Socket Mode, scopes `app_mentions:read`, `chat:write`, `commands`).
-- Create `breakdown/services/server.py` with FastAPI endpoints (`GET /health`, `POST /sessions/{id}/messages` SSE).
-- **Named Check**: `uv run python -c "from breakdown.services import server"` exits 0.
+### Task 6: Breakdown Bot Runtime & CLI (`breakdown/bot.py`, CLI `breakdown bot`)
+- Refactored per user direction: learn patterns from Claude Agent SDK and Managed Agents cookbooks to build the native Breakdown Bot instead of an external Slack bot.
+- Implement `BreakdownBot` with natural task intent parsing ("go research...", "go plan...", "implement...").
+- Implement `BotEvent` streaming (`bot_started`, `intent_resolved`, `stage_started`, `stage_completed`, `approval_needed`, `decision_recorded`, `completed`, `failed`).
+- Implement interactive decision routing (`bot.decide()`) and auto-approval capabilities.
+- Integrate into CLI as `breakdown bot "<task>"` with `--stream` and `--auto-approve`.
+- **Named Check**: `uv run pytest tests/test_bot.py` exits 0.
 
 ---
 

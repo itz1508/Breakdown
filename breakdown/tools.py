@@ -33,6 +33,7 @@ from breakdown.safety import (
     is_denied_read_name,
     resolve_contained,
 )
+from breakdown.semantic_search import SemanticSearchRequest, semantic_search
 
 MAX_FILE_BYTES = 1_000_000
 MAX_RESULTS_DEFAULT = 50
@@ -266,6 +267,13 @@ TOOLS: Mapping[str, CanonicalTool] = {
         function=memory_search,
         needs_memory_root=True,
     ),
+    "semantic_search": CanonicalTool(
+        name="semantic_search",
+        description="Semantic or keyword-ranked search over target repository and vector knowledge index.",
+        input_model=SemanticSearchRequest,
+        function=semantic_search,
+        needs_root=True,
+    ),
 }
 
 # Allowed subsets per role (authorization wiring; bootstrap enforces).
@@ -273,8 +281,23 @@ TOOLS: Mapping[str, CanonicalTool] = {
 # granted to the reading/analysis roles, withheld from the builder (memory must
 # never alter approved build scope).
 ROLE_TOOL_ALLOWLIST: Mapping[str, tuple[str, ...]] = {
-    "auditor": ("capability_inspect", "source_search", "source_read", "memory_list", "memory_read", "memory_search"),
-    "researcher": ("source_search", "source_read", "memory_list", "memory_read", "memory_search"),
+    "auditor": (
+        "capability_inspect",
+        "source_search",
+        "source_read",
+        "memory_list",
+        "memory_read",
+        "memory_search",
+        "semantic_search",
+    ),
+    "researcher": (
+        "source_search",
+        "source_read",
+        "memory_list",
+        "memory_read",
+        "memory_search",
+        "semantic_search",
+    ),
     "coder": ("source_search", "source_read", "memory_list", "memory_read", "memory_search"),
     "planner": (
         "capability_inspect",

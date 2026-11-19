@@ -327,6 +327,67 @@ async def test_researcher_rejects_unaddressed_question(fake_role_backend: Any, t
         await researcher.execute_research(payload, _context("research_execution"))
 
 
+async def test_researcher_builds_baseline_map_and_normalizes_evidence(
+    fake_role_backend: Any, target_repo: Path
+) -> None:
+    fake_role_backend.set_output("execute_research", RESEARCH_PAYLOAD)
+    researcher = Researcher(backend=fake_role_backend, tools=RoleToolkit(role="researcher", root=target_repo))
+    payload = ResearchExecutionInput(
+        research_proposal=_proposal_output(),
+        processing_plan=_processing_plan("research_response"),
+        research_approval_ref=ArtifactRef(artifact_key="research_approval_record", digest="2" * 64),
+        source_checkpoint=_checkpoint(),
+    )
+    output = await researcher.execute_research(payload, _context("research_execution"))
+    record = output.research_record
+    assert record.baseline_map is not None
+    assert record.baseline_map.repository_identity == "test-repo"
+    assert len(record.baseline_map.entries) >= 1
+    assert record.baseline_map.entries[0].path == "src/calc.py"
+    assert record.baseline_map.entries[0].category == "source"
+
+    assert len(record.normalized_evidence) >= 1
+    norm = record.normalized_evidence[0]
+    assert norm.evidence_ref == "ev-1"
+    assert norm.source_identity == "test-repo"
+    assert norm.source_location == "tests/test_calc.py"
+    assert norm.provenance_preserved is True
+
+
+async def test_researcher_rejects_missing_provenance(fake_role_backend: Any, target_repo: Path) -> None:
+    bad_payload = {
+        "research_record": {
+            "record_id": "rr-bad",
+            "resolved_questions": [{"question_id": "q-1", "answer": "pytest", "evidence_refs": ["ev-1"]}],
+            "unresolved_questions": [],
+            "evidence": [
+                {
+                    "evidence_id": "ev-1",
+                    "claim": "repo uses pytest",
+                    "source_identity": "",  # missing provenance
+                    "source_location": "",
+                    "accessed_at": "2026-11-17T00:00:00+00:00",
+                    "status": "supported",
+                }
+            ],
+            "contradictions": [],
+            "fixture_specifications": [],
+        },
+        "report_summary": "addressed",
+        "research_todo": {"items": [{"question_id": "q-1", "status": "completed"}]},
+    }
+    fake_role_backend.set_output("execute_research", bad_payload)
+    researcher = Researcher(backend=fake_role_backend, tools=RoleToolkit(role="researcher", root=target_repo))
+    payload = ResearchExecutionInput(
+        research_proposal=_proposal_output(),
+        processing_plan=_processing_plan("research_response"),
+        research_approval_ref=ArtifactRef(artifact_key="research_approval_record", digest="2" * 64),
+        source_checkpoint=_checkpoint(),
+    )
+    with pytest.raises(RoleOperationError):
+        await researcher.execute_research(payload, _context("research_execution"))
+
+
 async def test_planner_produces_authoritative_plan(fake_role_backend: Any, target_repo: Path) -> None:
     fake_role_backend.set_output("create_implementation_plan", PLAN_PAYLOAD)
     planner = Planner(backend=fake_role_backend, tools=RoleToolkit(role="planner", root=target_repo))
