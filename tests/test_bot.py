@@ -80,14 +80,16 @@ def test_bot_run_auto_approve_full_cycle(test_repo: Path) -> None:
 def test_bot_cli_stream(test_repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
     from breakdown.__main__ import main
 
-    exit_code = main([
-        "bot",
-        "go research vector search",
-        "--target",
-        str(test_repo),
-        "--offline-demo",
-        "--stream",
-    ])
+    exit_code = main(
+        [
+            "bot",
+            "go research vector search",
+            "--target",
+            str(test_repo),
+            "--offline-demo",
+            "--stream",
+        ]
+    )
     assert exit_code == 0
     captured = capsys.readouterr()
     assert "[bot_started]" in captured.out

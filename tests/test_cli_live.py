@@ -1,7 +1,6 @@
 """Phase 3b - D37: consolidate-memory CLI tests."""
 
 
-
 def test_cli_consolidate_live():
     """D37: --live flag successful consolidation."""
     # Test that the CLI accepts --live flag

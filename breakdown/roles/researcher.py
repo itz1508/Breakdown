@@ -175,4 +175,3 @@ def _validate_coverage(output: ResearchExecutionOutput, input_value: ResearchExe
             raise RoleOperationError(
                 f"material finding {ev.evidence_id} missing provenance (source_identity or source_location)"
             )
-

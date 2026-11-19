@@ -135,8 +135,7 @@ class MemoryStore:
         try:
             escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             rows = conn.execute(
-                "SELECT path, revision, digest, created_at FROM memories "
-                "WHERE path LIKE ? ESCAPE '\\' ORDER BY path",
+                "SELECT path, revision, digest, created_at FROM memories WHERE path LIKE ? ESCAPE '\\' ORDER BY path",
                 (f"{escaped}%",),
             ).fetchall()
             return tuple(

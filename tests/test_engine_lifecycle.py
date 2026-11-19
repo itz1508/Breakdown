@@ -236,16 +236,25 @@ class _E2E:
 
         def role_factory(sandbox: Path | None) -> Mapping[str, object]:
             return {
-                "auditor": Auditor(backend=self.backend, tools=RoleToolkit(role="auditor", root=self.target, memory_root=self.target)),
-                "researcher": Researcher(backend=self.backend, tools=RoleToolkit(role="researcher", root=self.target, memory_root=self.target)),
-                "planner": Planner(backend=self.backend, tools=RoleToolkit(role="planner", root=self.target, memory_root=self.target)),
+                "auditor": Auditor(
+                    backend=self.backend, tools=RoleToolkit(role="auditor", root=self.target, memory_root=self.target)
+                ),
+                "researcher": Researcher(
+                    backend=self.backend,
+                    tools=RoleToolkit(role="researcher", root=self.target, memory_root=self.target),
+                ),
+                "planner": Planner(
+                    backend=self.backend, tools=RoleToolkit(role="planner", root=self.target, memory_root=self.target)
+                ),
                 "builder": Builder(backend=_ScriptedCodingBackend(), sandbox_root=sandbox or self.target),
             }
 
         self.engine = WorkflowEngine(
             definition=self.definition,
             contracts=self.contracts,
-            stores=EngineStores(artifacts=self.artifacts, events=self.events, runs=self.runs, safety=self.safety, memory=self.memory),
+            stores=EngineStores(
+                artifacts=self.artifacts, events=self.events, runs=self.runs, safety=self.safety, memory=self.memory
+            ),
             approvals=self.approvals,
             role_factory=role_factory,
         )

@@ -249,13 +249,8 @@ def web_search(request: WebSearchRequest, *, root: Path | None = None) -> WebSea
 
     if request.allowed_domains and target_domain is not None:
         normalized_allowed = tuple(d.lower().lstrip(".") for d in request.allowed_domains)
-        if not any(
-            target_domain == d or target_domain.endswith("." + d)
-            for d in normalized_allowed
-        ):
-            raise ToolNotAuthorized(
-                f"domain {target_domain!r} is not in allowed_domains: {request.allowed_domains}"
-            )
+        if not any(target_domain == d or target_domain.endswith("." + d) for d in normalized_allowed):
+            raise ToolNotAuthorized(f"domain {target_domain!r} is not in allowed_domains: {request.allowed_domains}")
 
     # Check for encrypted or binary rejection
     lower_query = request.query.lower()

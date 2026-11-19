@@ -1,4 +1,3 @@
-
 """Offline demo backends (D26): scripted, schema-valid outputs so the full
 eight-stage workflow can be exercised without any model SDK.
 

@@ -469,4 +469,14 @@ OpenAI-compatible endpoints (Databricks key or custom API key).
 - Tests: 308 passing tests (including 7 lifecycle and invariant tests, bot decision lifecycle tests, and baseline memory persistence tests), 16/16 offline evals with
   8/8 blocking zeros holding, mypy strict clean (30 source files), ruff clean. Full gate green.
 
+### Test Count Reconciliation (292 / 328 / 308)
+- **292 baseline**: Pre-expansion Phase 3b test suite (verification gating, memory CAS, live retry). Grew to 295 with initial baseline_map memory tests.
+- **328 peak (D42)**: 295 baseline + 33 unit tests in `tests/test_automations.py` validating the Automations proto wire format and Slack trigger ingestion.
+- **308 authoritative (D43)**:
+  - `-33` tests: Retired and deleted `tests/test_automations.py` when D43 established Slack/Automations draft scaffolding as out of scope.
+  - `+7` tests: Added `tests/test_lifecycle.py` enforcing D43 runtime invariants (backend `aclose()`, lock release, runtime_kind affinity, event loop ownership).
+  - `+4` tests: Added `web_search` domain constraint, binary rejection, and toolkit dispatch tests in `tests/test_tools.py`.
+  - `+2` tests: Added `bot.decide()` cancel lifecycle and cross-session baseline retrieval tests in `tests/test_bot.py`.
+  - **Net total: 295 - 33 + 7 + 4 + 2 = 308 tests**, all passing clean.
+
 
