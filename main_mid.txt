@@ -1,0 +1,60 @@
+    if getattr(args, "state_root", None):
+        updates["state_root"] = Path(args.state_root)
+    if getattr(args, "bindings", None):
+        updates["backend_bindings_path"] = Path(args.bindings)
+    return Settings().model_copy(update=updates) if updates else Settings()
+
+
+def _add_runtime_args(parser: argparse.ArgumentParser, *, mutating: bool) -> None:
+    parser.add_argument("--workflow", default=None, help="path to breakdown.yaml")
+    parser.add_argument("--target", default=None, help="target repository root (default: .)")
+    parser.add_argument("--state-root", default=None, help="state directory under target (default: .breakdown)")
+    parser.add_argument("--bindings", default=None, help="path to backend bindings JSON")
+    parser.add_argument("--user", default="cli-user", help="user identity recorded with decisions")
+    if mutating:
+        parser.add_argument(
+            "--offline-demo",
+            action="store_true",
+            help="use the scripted offline backends (no live API needed)",
+        )
+        parser.add_argument(
+            "--live",
+            action="store_true",
+            help="use live OpenAI-compatible backends (BREAKDOWN_API_BASE_URL/API_KEY/MODEL; bindings required)",
+        )
+        parser.add_argument("--force-unlock", action="store_true", help="take over a known-stale lockfile")
+
+
+def _demo_request_text(settings: Settings, run_id: str | None, fallback: str) -> str:
+    """Demo backends are scripted per request; on resume the stored
+    initial_request artifact is the authoritative source of that text."""
+    if run_id is None:
+        return fallback
+    from breakdown.artifact_store import ArtifactStore
+    from breakdown.run_store import RunStore
+
+    state_root = (settings.target_repo.resolve() / settings.state_root).resolve()
+    loaded = RunStore(state_root).load(run_id)
+    if loaded is None:
+        return fallback
+    _, record = loaded
+    ref = record.produced_artifacts.get("initial_request")
+    if ref is None:
+        return fallback
+    return ArtifactStore(state_root).get_model(InitialRequest, ref.artifact_key, ref.revision).text
+
+
+def _build_runtime(args: argparse.Namespace, settings: Settings, run_id: str | None, fallback_text: str) -> Runtime:
+    offline_demo = getattr(args, "offline_demo", False)
+    live = getattr(args, "live", False)
+    if offline_demo and live:
+        raise BootstrapError("--offline-demo and --live are mutually exclusive")
+    if live:
+        return _build_live_runtime(args, settings)
+    if not offline_demo:
+        raise BootstrapError("no backend selected: pass --offline-demo (scripted) or --live (OpenAI-compatible API)")
+    text = _demo_request_text(settings, run_id, fallback_text)
+    return build_runtime(
+        settings,
+        role_backend=OfflineDemoRoleBackend(text),
+        coding_backend=OfflineDemoCodingBackend(text),

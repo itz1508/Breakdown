@@ -1,3 +1,4 @@
+
 """Offline demo backends (D26): scripted, schema-valid outputs so the full
 eight-stage workflow can be exercised without any model SDK.
 
@@ -198,3 +199,9 @@ class OfflineDemoCodingBackend:
             reported_changed_paths=("DEMO_CHANGE.md",),
             usage=TokenUsage(input_tokens=25, output_tokens=25, tool_calls=1),
         )
+
+# verify_build_task added for D35 independent verification
+"verify_build_task": {
+    "output_model": "BuildVerificationOutput",
+    "task_verifications": [],
+},

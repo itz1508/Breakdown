@@ -40,6 +40,8 @@ from breakdown.contracts import (
     activate_role_contract,
 )
 from breakdown.events import EventStore
+from breakdown.memory import MemoryStore
+from breakdown.verification import build_verification_input, verification_request, parse_verification, verification_failure_reason
 from breakdown.models import (
     ArtifactRef,
     BuildExecutionInput,
@@ -230,6 +232,7 @@ class EngineStores:
     events: EventStore
     runs: RunStore
     safety: SafetyBoundary
+    memory: MemoryStore | None = None
 
 
 def _utcnow() -> datetime:
@@ -625,7 +628,7 @@ class WorkflowEngine:
         return self.stores.artifacts.get_digest(ref.artifact_key, ref.revision) == ref.digest
 
     def _post_build(
-        self, run_id: str, produced: dict[str, ArtifactRef], approved_checkpoint: SourceCheckpoint
+        self, run_id: str, produced: dict[str, ArtifactRef], approved_checkpoint: SourceCheckpoint, sandbox: Path | None = None
     ) -> str | None:
         """build_execution.synchronization: detect, authorize, synchronize, reconcile."""
         report = self.stores.safety.detect_changed_paths(run_id, approved_checkpoint)
@@ -637,7 +640,29 @@ class WorkflowEngine:
         plan = self.stores.artifacts.get_model(ImplementationPlan, plan_ref.artifact_key, plan_ref.revision)
         approved_paths = {target.path for task in plan.tasks for target in task.target_paths}
         task_results_valid = all(result.criterion is CriterionResult.VALID for result in build_output.task_results)
-        integration_valid = all(result.criterion is CriterionResult.VALID for result in build_output.validation_results)
+        # D35: independent verification — if a verifier backend is configured, grade each
+        # build task against the plan's validation steps by reading the actual sandbox files.
+        # The builder's self‑report (validation_results) is kept as evidence but no longer
+        # gates authorization; independent_verification is stored as an artifact.
+        verifier = self._role_factory(None).get("verifier")
+        if verifier is not None:
+            # Assemble verification input from the plan, build output, and sandbox
+            vb_input = build_verification_input(run_id, plan, build_output, sandbox or self.stores.safety.target_root)
+            vb_request = verification_request(vb_input)
+            # Run the verifier backend in a fresh context
+            try:
+                vb_response = asyncio.run(verifier.generate(vb_request))
+            except Exception:  # noqa: BLE001 - verifier unavailable → conservative block
+                integration_valid = False
+                verification_blocked = "independent verifier unavailable"
+            else:
+                verdicts = parse_verification(vb_response, vb_input)
+                integration_valid = all(v.criterion is CriterionResult.VALID for v in verdicts)
+                verification_blocked = verification_failure_reason(verdicts)
+        else:
+            # Legacy self‑report path (backward compatible)
+            integration_valid = all(result.criterion is CriterionResult.VALID for result in build_output.validation_results)
+            verification_blocked = None
         record = self._reload(run_id)
         sync_result = self.stores.safety.authorize_synchronization(
             report=report,
@@ -1003,7 +1028,48 @@ class WorkflowEngine:
             ),
             expected_revision=revision,
         )
+        self._write_run_lesson(run_id, record, outcome, reason, changed_paths)
         return self._reload(run_id)
+
+    def _write_run_lesson(
+        self, run_id: str, record: RunRecord, outcome: str, reason: str, changed_paths: tuple[str, ...]
+    ) -> None:
+        """D36: deterministic cross-run memory. Every terminal run leaves one
+        lesson document (failures under lessons/, successes under runs/).
+        Best-effort: memory is telemetry and must never block the terminal
+        state that was just persisted."""
+        memory = self.stores.memory
+        if memory is None:
+            return
+        if outcome == "success":
+            path = f"runs/{run_id}.md"
+            lines = [
+                f"# Run record: {run_id}",
+                "",
+                "- Terminal outcome: success",
+                f"- Synchronized paths: {', '.join(changed_paths) if changed_paths else 'none'}",
+            ]
+        else:
+            path = f"lessons/{run_id}.md"
+            failed_stage = record.current_stage or "unknown"
+            attempts = record.stage_attempts.get(failed_stage, 0)
+            lines = [
+                f"# Run lesson: {run_id}",
+                "",
+                f"- Terminal outcome: {outcome}",
+                f"- Reason: {reason or 'none recorded'}",
+                f"- Failed stage: {failed_stage} (attempt {attempts})",
+            ]
+        lines.append(f"- Tokens used: {record.tokens_used}; tool calls: {record.tool_calls_used}")
+        by_stage = ", ".join(
+            f"{stage}={usage.tokens_used}t/{usage.tool_calls_used}tc" for stage, usage in sorted(record.stage_usage.items())
+        )
+        lines.append(f"- Usage by stage: {by_stage or 'none'}")
+        lines.append("")
+        try:
+            memory.write(path, "\n".join(lines), run_id=run_id)
+        except Exception:  # noqa: BLE001 - best-effort telemetry, never blocks completion
+            pass
 
     def record_decision(self, run_id: str, action: str, *, user_identity: str, reason: str = "") -> RunRecord:
         outcome = self.approvals.record_decision(run_id, action, user_identity=user_identity, reason=reason)

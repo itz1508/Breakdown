@@ -24,7 +24,9 @@ _PLANNER_BRIEF = (
     "more approved target paths. Task sequence starts at 1 and is contiguous. A "
     "path belongs to one task unless an explicit dependency is declared. Every "
     "capability reuse decision is evidence-backed. No uncertainty enters a build "
-    "task. Do not freeze, approve, execute, or synchronize the plan."
+    "task. Do not freeze, approve, execute, or synchronize the plan. "
+    "If memory tools are available, consult prior-run lessons (memory_list, "
+    "memory_read, memory_search) to avoid previously failed approaches."
 )
 
 

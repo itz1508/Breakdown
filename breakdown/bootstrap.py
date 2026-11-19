@@ -30,6 +30,7 @@ from breakdown.contracts import (
 )
 from breakdown.engine import EngineStores, WorkflowEngine, load_workflow
 from breakdown.events import EventStore
+from breakdown.memory import MemoryStore
 from breakdown.models import ContractKind, Settings, WorkflowDefinition
 from breakdown.roles import RoleToolkit
 from breakdown.roles.auditor import Auditor
@@ -209,6 +210,7 @@ def build_runtime(
         events=EventStore(state_root),
         runs=RunStore(state_root),
         safety=SafetyBoundary(target_root=target_root, state_root=state_root),
+        memory=MemoryStore(state_root),
     )
     approvals = ApprovalManager(
         artifacts=stores.artifacts, events=stores.events, runs=stores.runs, definition=definition
@@ -222,7 +224,8 @@ def build_runtime(
             return selected
 
         toolkits = {
-            role: RoleToolkit(role=role, root=target_root) for role in ("auditor", "researcher", "coder", "planner")
+            role: RoleToolkit(role=role, root=target_root, memory_root=state_root)
+            for role in ("auditor", "researcher", "coder", "planner")
         }
         coder = Coder(backend=backend_for("coder"), tools=toolkits["coder"])
         return {

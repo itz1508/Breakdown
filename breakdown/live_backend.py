@@ -14,11 +14,13 @@ variables, never values.
 
 from __future__ import annotations
 
+import asyncio
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+import openai
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
@@ -38,13 +40,58 @@ class LiveBackendError(RuntimeError):
     """Live adapter failure: configuration, transport, or protocol."""
 
 
+_MAX_TRANSPORT_RETRIES = 3
+
+
+def _is_retryable(exc: Exception) -> bool:
+    """Transient transport faults worth retrying (D38): rate limits, connection
+    failures, and server errors. Permanent failures (auth, bad request) raise
+    immediately."""
+    if isinstance(exc, (openai.RateLimitError, openai.APIConnectionError)):
+        return True
+    return isinstance(exc, openai.APIStatusError) and exc.status_code >= 500
+
+
+def _retry_after_seconds(exc: Exception) -> float | None:
+    """Retry-After header value when the endpoint supplies one."""
+    response = getattr(exc, "response", None)
+    headers = getattr(response, "headers", None)
+    raw = headers.get("Retry-After") if headers is not None and hasattr(headers, "get") else None
+    if raw is None:
+        return None
+    try:
+        return max(0.0, float(raw))
+    except (TypeError, ValueError):
+        return None
+
+
+async def _with_retry(factory: Callable[[], Awaitable[Any]], *, base_delay: float) -> Any:
+    """Run one async API call, retrying transient faults with exponential
+    backoff (Retry-After honored when present). After the retry budget is
+    exhausted the last error propagates to the caller's error handling."""
+    attempt = 0
+    while True:
+        try:
+            return await factory()
+        except Exception as exc:
+            if attempt >= _MAX_TRANSPORT_RETRIES or not _is_retryable(exc):
+                raise
+            attempt += 1
+            delay = _retry_after_seconds(exc)
+            if delay is None:
+                delay = base_delay * (2 ** (attempt - 1))
+            await asyncio.sleep(delay)
+
+
 def build_openai_client(settings: Settings) -> AsyncOpenAI:
-    """One shared client per runtime; key materialized only here."""
+    """One shared client per runtime; key materialized only here. SDK-internal
+    retries are disabled (max_retries=0) so the adapter's own policy (D38) is
+    the single retry layer."""
     if not settings.api_base_url:
         raise LiveBackendError("live mode requires BREAKDOWN_API_BASE_URL (e.g. a Databricks serving endpoint)")
     if settings.api_key is None:
         raise LiveBackendError("live mode requires BREAKDOWN_API_KEY")
-    return AsyncOpenAI(base_url=settings.api_base_url, api_key=settings.api_key.get_secret_value())
+    return AsyncOpenAI(base_url=settings.api_base_url, api_key=settings.api_key.get_secret_value(), max_retries=0)
 
 
 def resolve_model(settings: Settings, role: str) -> str:
@@ -100,11 +147,22 @@ class OpenAICompatibleRoleBackend:
     validation in the role layer remains the authority on output shape.
     """
 
-    def __init__(self, *, client: AsyncOpenAI, model: str, tool_root: Path, max_tool_rounds: int = 8) -> None:
+    def __init__(
+        self,
+        *,
+        client: AsyncOpenAI,
+        model: str,
+        tool_root: Path,
+        max_tool_rounds: int = 8,
+        retry_base_delay: float = 0.5,
+        memory_root: Path | None = None,
+    ) -> None:
         self._client = client
         self._model = model
         self._tool_root = Path(tool_root)
         self._max_tool_rounds = max_tool_rounds
+        self._retry_base_delay = retry_base_delay
+        self._memory_root = memory_root
 
     async def generate(self, request: RoleBackendRequest) -> RoleBackendResponse:
         allowed = tuple(request.tool_names)
@@ -168,7 +226,9 @@ class OpenAICompatibleRoleBackend:
         if response_format is not None:
             kwargs["response_format"] = response_format
         try:
-            return await self._client.chat.completions.create(**kwargs)
+            return await _with_retry(
+                lambda: self._client.chat.completions.create(**kwargs), base_delay=self._retry_base_delay
+            )
         except LiveBackendError:
             raise
         except Exception as exc:  # transport / auth / protocol errors
@@ -191,7 +251,7 @@ class OpenAICompatibleRoleBackend:
         if not isinstance(payload, dict):
             return json.dumps({"error": "tool arguments must be a JSON object"})
         try:
-            result = dispatch_tool(name, payload, root=self._tool_root)
+            result = dispatch_tool(name, payload, root=self._tool_root, memory_root=self._memory_root)
         except Exception as exc:
             return json.dumps({"error": str(exc)})
         if isinstance(result, BaseModel):
@@ -238,9 +298,10 @@ class OpenAICompatibleCodingBackend:
     owns detection, authorization, and synchronization downstream.
     """
 
-    def __init__(self, *, client: AsyncOpenAI, model: str) -> None:
+    def __init__(self, *, client: AsyncOpenAI, model: str, retry_base_delay: float = 0.5) -> None:
         self._client = client
         self._model = model
+        self._retry_base_delay = retry_base_delay
 
     async def apply_task(self, request: CodingBackendRequest) -> CodingBackendResult:
         task = request.task
@@ -262,12 +323,15 @@ class OpenAICompatibleCodingBackend:
             "file content. Only approved paths. No prose."
         )
         try:
-            response = await self._client.chat.completions.create(
-                model=self._model,
-                messages=[
-                    {"role": "system", "content": "You edit files precisely and never touch unlisted paths."},
-                    {"role": "user", "content": prompt},
-                ],
+            response = await _with_retry(
+                lambda: self._client.chat.completions.create(
+                    model=self._model,
+                    messages=[
+                        {"role": "system", "content": "You edit files precisely and never touch unlisted paths."},
+                        {"role": "user", "content": prompt},
+                    ],
+                ),
+                base_delay=self._retry_base_delay,
             )
         except Exception as exc:
             return CodingBackendResult(

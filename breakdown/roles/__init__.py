@@ -31,6 +31,7 @@ class RoleToolkit:
 
     role: str
     root: Path
+    memory_root: Path | None = None
 
     def allowed_names(self) -> tuple[str, ...]:
         return ROLE_TOOL_ALLOWLIST.get(self.role, ())
@@ -38,7 +39,7 @@ class RoleToolkit:
     def call(self, name: str, payload: Mapping[str, Any]) -> Any:
         if name not in self.allowed_names():
             raise ToolNotAuthorized(f"tool {name!r} is not allowed for role {self.role!r}")
-        return dispatch_tool(name, payload, root=self.root)
+        return dispatch_tool(name, payload, root=self.root, memory_root=self.memory_root)
 
 
 def structured_or_raise(raw: Mapping[str, Any] | None, model: type[T], operation: str) -> T:

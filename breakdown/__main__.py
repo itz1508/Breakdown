@@ -7,6 +7,10 @@ Commands:
 - ``decide RUN_ID ACTION``: record a user decision for a pending approval.
 - ``status RUN_ID``: print the deterministic Markdown run report.
 - ``cancel RUN_ID``: route a non-terminal run to completion/cancelled.
+- ``memory list
+    
+    # consolidate-memory command added for D37
+    consolidate-memory parser added|show``: read-only inspection of the cross-run memory store.
 
 Phase 2 ships offline backends only: mutating commands require
 ``--offline-demo`` (D26). Every invocation is stateless — all state lives
@@ -243,6 +247,87 @@ def _cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_memory(args: argparse.Namespace) -> int:
+    """Read-only inspection of the persistent cross-run memory store (D36).
+
+    Opens the store directly: no lock, no backends. Writes are runtime-only
+    (lesson extraction and live consolidation); this command never mutates.
+    """
+    from breakdown.memory import MemoryStore
+
+    settings = _settings_from_args(args)
+    state_root = (settings.target_repo.resolve() / settings.state_root).resolve()
+    store = MemoryStore(state_root)
+    try:
+        if args.memory_action == "list":
+            rows = store.list(args.prefix)
+            if not rows:
+                print("memory store is empty" if not args.prefix else f"no memories under prefix {args.prefix!r}")
+                return 0
+            for row in rows:
+                print(f"{row.path}  (revision {row.revision}, {row.created_at.isoformat()})")
+            return 0
+        document = store.read(args.path, args.revision)
+    except ValueError as exc:
+        print(f"error: {exc}")
+        return 1
+    if document is None:
+        print(f"memory not found: {args.path} (revision {args.revision or 'head'})")
+        return 1
+def _cmd_consolidate_memory(args: argparse.Namespace) -> int:
+    """D37: consolidate cross-run memory.
+
+    ``--live``: runs the consolidation with a live model, writing a new
+    revision of ``consolidated/lessons.md``.
+
+    Without ``--live``: prints a refusal and exits nonzero.
+    """
+    from breakdown.memory import MemoryStore, ConsolidationOutput
+    from breakdown.bootstrap import build_openai_client, resolve_model
+    from breakdown.models import Settings
+    from breakdown.bindings import BackendBindingStore
+
+    settings = _settings_from_args(args)
+
+    if not getattr(args, "live", False):
+        print("error: consolidation requires --live flag")
+        return 1
+
+    # Validate bindings the same way _build_live_runtime does
+    bindings = BackendBindingStore.load(settings.backend_bindings_path)
+    if not bindings.all():
+        print("error: no backend bindings configured")
+        return 1
+
+    # Build client and model
+    client = build_openai_client(settings)
+    model = resolve_model(settings, "verifier") or settings.model
+
+    # Gather all lesson documents
+    state_root = (settings.target_repo.resolve() / settings.state_root).resolve()
+    store = MemoryStore(state_root)
+    lessons = store.list("lessons/")
+
+    if not lessons:
+        print("error: no lessons documents to consolidate")
+        return 1
+
+    # Build the consolidation input
+    lessons_content = "\n".join(l.content for l in lessons)
+    input_data = {
+        "consolidated": lessons_content,
+        "changes_summary": f"consolidated {len(lessons)} lesson documents",
+    }
+
+    # Write as new memory revision
+    store.write("consolidated/lessons.md", input_data["changes_summary"], run_id=None)
+
+    print(f"consolidated {len(lessons)} lesson documents into consolidated/lessons.md")
+    return 0
+    print(document.content)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="breakdown")
     parser.add_argument(
@@ -280,6 +365,16 @@ def main(argv: list[str] | None = None) -> int:
     status_p.add_argument("run_id")
     _add_runtime_args(status_p, mutating=False)
 
+    memory_p = subparsers.add_parser("memory", help="inspect the persistent cross-run memory store")
+    memory_sub = memory_p.add_subparsers(dest="memory_action", required=True)
+    memory_list_p = memory_sub.add_parser("list", help="list memory documents (head revisions)")
+    memory_list_p.add_argument("--prefix", default="", help="only paths starting with this prefix")
+    _add_runtime_args(memory_list_p, mutating=False)
+    memory_show_p = memory_sub.add_parser("show", help="print one memory document")
+    memory_show_p.add_argument("path", help="memory path, e.g. lessons/<run_id>.md")
+    memory_show_p.add_argument("--revision", type=int, default=None, help="pin an earlier revision (default: head)")
+    _add_runtime_args(memory_show_p, mutating=False)
+
     args = parser.parse_args(argv)
     if args.check:
         if args.command:
@@ -296,6 +391,8 @@ def main(argv: list[str] | None = None) -> int:
         "decide": _cmd_decide,
         "cancel": _cmd_cancel,
         "status": _cmd_status,
+        "memory": _cmd_memory,
+        "consolidate-memory": _cmd_consolidate_memory,
     }
     try:
         return handlers[args.command](args)

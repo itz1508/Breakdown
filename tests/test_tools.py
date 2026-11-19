@@ -79,22 +79,39 @@ def test_dispatch_unknown_tool_denied(repo: Path) -> None:
         dispatch_tool("artifact_write", {}, root=repo)
 
 
-def test_registry_exposes_exactly_three_model_callable_tools() -> None:
-    assert set(TOOLS) == {"capability_inspect", "source_search", "source_read"}
+def test_registry_exposes_exactly_six_model_callable_tools() -> None:
+    # D36: three read-only memory tools join the three source tools.
+    assert set(TOOLS) == {
+        "capability_inspect",
+        "source_search",
+        "source_read",
+        "memory_list",
+        "memory_read",
+        "memory_search",
+    }
     for forbidden in (
         "proposal_create",
         "plan_freeze",
         "plan_preflight",
         "source_checkpoint",
         "memory_lookup",
+        "memory_write",  # runtime-only write discipline (D36): no model-callable write tool
     ):
         assert forbidden not in TOOLS
 
 
 def test_role_allowlists_match_matrix() -> None:
-    assert ROLE_TOOL_ALLOWLIST["builder"] == ()
-    assert set(ROLE_TOOL_ALLOWLIST["researcher"]) == {"source_search", "source_read"}
+    assert ROLE_TOOL_ALLOWLIST["builder"] == ()  # builder never reads or writes memory
+    assert set(ROLE_TOOL_ALLOWLIST["researcher"]) == {
+        "source_search",
+        "source_read",
+        "memory_list",
+        "memory_read",
+        "memory_search",
+    }
     assert "capability_inspect" in ROLE_TOOL_ALLOWLIST["auditor"]
+    for role in ("auditor", "coder", "planner"):
+        assert {"memory_list", "memory_read", "memory_search"} <= set(ROLE_TOOL_ALLOWLIST[role])
 
 
 def test_tool_definitions_carry_schemas() -> None:

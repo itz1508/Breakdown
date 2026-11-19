@@ -168,6 +168,7 @@ class Settings(BaseSettings):
     model_researcher: str | None = None
     model_coder: str | None = None
     model_planner: str | None = None
+    model_verifier: str | None = None
     api_max_tool_rounds: int = Field(default=8, ge=1)
 
 
@@ -1013,3 +1014,56 @@ OPERATION_IO: Mapping[str, tuple[type[StrictModel], type[StrictModel]]] = {
     "create_implementation_plan": (ImplementationPlanningInput, ImplementationPlanningOutput),
     "execute_build": (BuildExecutionInput, BuildExecutionOutput),
 }
+
+
+# --- Cross-run verification (Phase 3b, D35) ---
+
+
+class ObservedFile(StrictModel):
+    """One file observed by the verifier for a given task."""
+
+    path: str = Field(min_length=1)
+    content: str
+    truncated: bool = False
+
+
+class VerificationTaskView(StrictModel):
+    """A single task within a build verification input."""
+
+    task_ref: str = Field(min_length=1)
+    description: str
+    expected_result: str
+    validation_steps: tuple[str, ...]
+    observed_files: tuple[ObservedFile, ...]
+
+
+class BuildVerificationInput(StrictModel):
+    """Input to the independent verifier for a completed run."""
+
+    run_id: str
+    tasks: tuple[VerificationTaskView, ...] = Field(min_length=1)
+
+
+class BuildVerificationOutput(StrictModel):
+    """Output from the independent verifier: per-criterion verdicts."""
+
+    task_verifications: tuple[CheckResult, ...] = Field(min_length=0)
+
+
+# --- Cross-run memory (Phase 3b, D36) ---
+
+
+class MemorySummary(StrictModel):
+    """Head-of-branch metadata for one path-addressed memory document."""
+
+    path: str = Field(min_length=1)
+    revision: int = Field(ge=1)
+    digest: str = Field(min_length=1)
+    created_at: AwareDatetime
+
+
+class MemoryDocument(MemorySummary):
+    """One immutable memory revision: content plus provenance."""
+
+    content: str
+    run_id: str | None = None

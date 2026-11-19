@@ -25,6 +25,7 @@ from typing import Any
 
 from pydantic import Field, ValidationError
 
+from breakdown.memory import MemoryStore
 from breakdown.models import StrictModel
 from breakdown.safety import (
     SKIPPED_DIR_NAMES,
@@ -176,6 +177,40 @@ def source_read(payload: SourceReadRequest, *, root: Path) -> SourceReadResult:
     )
 
 
+# --- memory tools (Phase 3b, D36) ----------------------------------------------
+
+
+class MemoryListRequest(StrictModel):
+    prefix: str = ""
+
+
+class MemoryReadRequest(StrictModel):
+    path: str = Field(min_length=1)
+    revision: int | None = Field(default=None, ge=1)
+
+
+class MemorySearchRequest(StrictModel):
+    pattern: str = Field(min_length=1)
+
+
+def memory_list(payload: MemoryListRequest, *, memory_root: Path) -> Any:
+    """List path-addressed memory documents (head revisions), ordered by path."""
+    return MemoryStore(memory_root).list(payload.prefix)
+
+
+def memory_read(payload: MemoryReadRequest, *, memory_root: Path) -> Any:
+    """Read one memory document revision (head when revision is omitted)."""
+    document = MemoryStore(memory_root).read(payload.path, payload.revision)
+    if document is None:
+        raise ValueError(f"memory not found: {payload.path} (revision {payload.revision or 'head'})")
+    return document
+
+
+def memory_search(payload: MemorySearchRequest, *, memory_root: Path) -> Any:
+    """Regex search over head-revision memory content."""
+    return MemoryStore(memory_root).search(payload.pattern)
+
+
 # --- registry ----------------------------------------------------------------
 
 
@@ -186,6 +221,7 @@ class CanonicalTool:
     input_model: type[StrictModel]
     function: Callable[..., Any]
     needs_root: bool = False
+    needs_memory_root: bool = False
 
 
 TOOLS: Mapping[str, CanonicalTool] = {
@@ -209,14 +245,45 @@ TOOLS: Mapping[str, CanonicalTool] = {
         function=source_read,
         needs_root=True,
     ),
+    "memory_list": CanonicalTool(
+        name="memory_list",
+        description="List persistent cross-run memory documents (lessons from prior runs), ordered by path.",
+        input_model=MemoryListRequest,
+        function=memory_list,
+        needs_memory_root=True,
+    ),
+    "memory_read": CanonicalTool(
+        name="memory_read",
+        description="Read one persistent memory document by path; earlier revisions stay readable via revision.",
+        input_model=MemoryReadRequest,
+        function=memory_read,
+        needs_memory_root=True,
+    ),
+    "memory_search": CanonicalTool(
+        name="memory_search",
+        description="Regex search over persistent cross-run memory content (head revisions).",
+        input_model=MemorySearchRequest,
+        function=memory_search,
+        needs_memory_root=True,
+    ),
 }
 
 # Allowed subsets per role (authorization wiring; bootstrap enforces).
+# Memory tools are read-only views over the runtime-owned memory store (D36):
+# granted to the reading/analysis roles, withheld from the builder (memory must
+# never alter approved build scope).
 ROLE_TOOL_ALLOWLIST: Mapping[str, tuple[str, ...]] = {
-    "auditor": ("capability_inspect", "source_search", "source_read"),
-    "researcher": ("source_search", "source_read"),
-    "coder": ("source_search", "source_read"),
-    "planner": ("capability_inspect", "source_search", "source_read"),
+    "auditor": ("capability_inspect", "source_search", "source_read", "memory_list", "memory_read", "memory_search"),
+    "researcher": ("source_search", "source_read", "memory_list", "memory_read", "memory_search"),
+    "coder": ("source_search", "source_read", "memory_list", "memory_read", "memory_search"),
+    "planner": (
+        "capability_inspect",
+        "source_search",
+        "source_read",
+        "memory_list",
+        "memory_read",
+        "memory_search",
+    ),
     "builder": (),
 }
 
@@ -233,7 +300,7 @@ def tool_definitions() -> list[dict[str, Any]]:
     ]
 
 
-def dispatch_tool(name: str, payload: Mapping[str, Any], *, root: Path) -> Any:
+def dispatch_tool(name: str, payload: Mapping[str, Any], *, root: Path, memory_root: Path | None = None) -> Any:
     """Validate the payload, then run the canonical tool."""
     tool = TOOLS.get(name)
     if tool is None:
@@ -242,6 +309,10 @@ def dispatch_tool(name: str, payload: Mapping[str, Any], *, root: Path) -> Any:
         request = tool.input_model.model_validate(dict(payload))
     except ValidationError as exc:
         raise ToolInputNotValid(f"{name}: {exc}") from exc
+    if tool.needs_memory_root:
+        if memory_root is None:
+            raise ToolNotAuthorized("memory store not configured")
+        return tool.function(request, memory_root=memory_root)
     if tool.needs_root:
         return tool.function(request, root=root)
     return tool.function(request)
