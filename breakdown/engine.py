@@ -548,6 +548,7 @@ class WorkflowEngine:
                 approved_plan_revision=int(self._load_value(record, "approved_plan_revision")),
                 approved_source_checkpoint=self._load_model(record, "approved_source_checkpoint", SourceCheckpoint),
                 processing_plan=self._load_model(record, "build_execution_processing_plan", ProcessingPlan),
+                stop_on_criterion=self.definition.get_stage("build_execution").stop_on_criterion,
             )
         raise EngineError(f"no input assembler for stage {stage_id}")
 
@@ -691,15 +692,16 @@ class WorkflowEngine:
         attempts: Mapping[str, int] | None = None,
         usage: tuple[int, int] | None = None,
     ) -> None:
-        """cost_budget.on_exceeded: route completion, terminal_outcome failed,
-        reason budget_exhausted; artifacts produced so far are preserved."""
+        """cost_budget.on_exceeded: route completion with the terminal outcome and
+        reason declared by the definition; artifacts produced so far are preserved."""
         tokens_used, tool_calls_used = usage if usage is not None else (record.tokens_used, record.tool_calls_used)
+        on_exceeded = self.definition.cost_budget.get("on_exceeded") or {}
+        terminal_outcome = str(on_exceeded.get("terminal_outcome") or "failed")
+        reason = str(on_exceeded.get("reason") or "budget_exhausted")
         merged = dict(record.produced_artifacts)
         if produced:
             merged.update(produced)
-        failure = FailureRecord(
-            stage_id=stage_id, error_type="budget_exhausted", evidence=detail, occurred_at=_utcnow()
-        )
+        failure = FailureRecord(stage_id=stage_id, error_type=reason, evidence=detail, occurred_at=_utcnow())
         merged["failure_record"] = self._store("failure_record", failure, stage_id)
         merged["budget_exhausted_record"] = self._store(
             "budget_exhausted_record",
@@ -716,8 +718,8 @@ class WorkflowEngine:
         update: dict[str, Any] = {
             "state": RunState.RUNNING,
             "current_stage": "completion",
-            "terminal_outcome": "failed",
-            "reason": "budget_exhausted",
+            "terminal_outcome": terminal_outcome,
+            "reason": reason,
             "produced_artifacts": merged,
             "resume_point": stage_id,
             "tokens_used": tokens_used,

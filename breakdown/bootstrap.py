@@ -26,6 +26,7 @@ from breakdown.contracts import (
     RoleBackend,
     build_contract_registry,
     validate_alignment,
+    validate_definition_consistency,
 )
 from breakdown.engine import EngineStores, WorkflowEngine, load_workflow
 from breakdown.events import EventStore
@@ -89,6 +90,7 @@ def bootstrap(
     )
     contracts = build_contract_registry(definition)
     validate_alignment(contracts, definition)
+    validate_definition_consistency(definition)
     return Application(
         definition=definition,
         contracts=contracts,
@@ -168,6 +170,7 @@ def build_runtime(
     definition = load_workflow(settings.workflow_path)
     contracts = build_contract_registry(definition)
     validate_alignment(contracts, definition)
+    validate_definition_consistency(definition)
     bindings = BackendBindingStore.load(settings.backend_bindings_path)
     if not offline_demo:
         for binding in bindings.all():

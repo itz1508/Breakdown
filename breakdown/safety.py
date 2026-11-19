@@ -28,6 +28,28 @@ from pathlib import Path, PurePosixPath
 from breakdown.models import PROTECTED_PATHS, SourceCheckpoint, SynchronizationResult
 
 MAX_SANDBOX_FILES = 50_000
+
+# Implemented authorization checks — mirrors breakdown.yaml
+# build_execution.authorization_checks (drift is pinned by
+# contracts.validate_definition_consistency / `--check`).
+AUTHORIZATION_CHECKS: tuple[str, ...] = (
+    "approval_action_is_approve",
+    "approval_hash_matches",
+    "frozen_plan_hash_matches",
+    "source_checkpoint_matches",
+    "preflight_result.criterion_result == valid",
+    "task_targets_match_approved_plan",
+)
+
+# Implemented synchronization requirements — mirrors breakdown.yaml
+# build_execution.synchronization.requires (pinned the same way).
+SYNCHRONIZATION_REQUIRES: tuple[str, ...] = (
+    "task_results_valid",
+    "integration_validation_valid",
+    "no_unexpected_paths",
+    "approval_bindings_current",
+    "source_preconditions_current",
+)
 MAX_SANDBOX_FILE_BYTES = 10_000_000
 SANDBOX_MANIFEST = ".breakdown-sandbox-manifest.json"
 

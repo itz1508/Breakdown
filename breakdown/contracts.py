@@ -459,3 +459,75 @@ def validate_alignment(registry: ContractRegistry, definition: WorkflowDefinitio
             raise ContractConfigurationError(f"{stage.id}: kind mismatch")
         if contract.requires != tuple(stage.requires) or contract.produces != tuple(stage.produces):
             raise ContractConfigurationError(f"{stage.id}: requires/produces diverged from definition")
+
+
+def validate_definition_consistency(definition: WorkflowDefinition) -> None:
+    """Pin declarative mirror blocks against their runtime implementations.
+
+    The definition declares vocabularies, the persistent-event catalog,
+    ownership, authorization checks, synchronization requirements, digest
+    policy, budget-exceeded policy, and the approved-package loopback
+    target; the runtime implements them. Any drift between the declaration
+    and the implementation is a configuration error.
+    """
+    from breakdown import canonical, safety
+    from breakdown.models import (
+        CapabilityCoverage,
+        CriterionResult,
+        EventPersistence,
+        EventType,
+        ExecutionStatus,
+    )
+
+    errors: list[str] = []
+
+    declared_events = {str(event) for event in definition.observability.get("persistent_events") or ()}
+    implemented_events = {member.value for member in EventType if member.persistence is EventPersistence.PERSISTENT}
+    if declared_events != implemented_events:
+        errors.append(
+            f"observability.persistent_events != EventType vocabulary "
+            f"(yaml-only={sorted(declared_events - implemented_events)}, "
+            f"code-only={sorted(implemented_events - declared_events)})"
+        )
+
+    vocabularies = (
+        ("execution_status", ExecutionStatus),
+        ("criterion_result", CriterionResult),
+        ("capability_coverage", CapabilityCoverage),
+    )
+    for name, enum_type in vocabularies:
+        declared = {str(value) for value in definition.vocabularies.get(name) or ()}
+        implemented = {member.value for member in enum_type}
+        if declared != implemented:
+            errors.append(f"vocabularies.{name} != {enum_type.__name__} values")
+
+    stage_owners = {stage.id: stage.owner for stage in definition.stages}
+    for owner, block in (definition.ownership or {}).items():
+        for stage_id in (block or {}).get("stages") or []:
+            actual = stage_owners.get(str(stage_id))
+            if actual is None:
+                errors.append(f"ownership.{owner} lists unknown stage {stage_id!r}")
+            elif actual != owner:
+                errors.append(f"ownership.{owner} lists {stage_id!r} but the stage owner is {actual!r}")
+
+    for stage in definition.stages:
+        if stage.authorization_checks and tuple(stage.authorization_checks) != safety.AUTHORIZATION_CHECKS:
+            errors.append(f"{stage.id}: authorization_checks diverged from the implemented safety checks")
+        sync_block = stage.synchronization or {}
+        declared_requires = tuple(str(require) for require in sync_block.get("requires") or ())
+        if declared_requires and declared_requires != safety.SYNCHRONIZATION_REQUIRES:
+            errors.append(f"{stage.id}: synchronization.requires diverged from the implemented safety requirements")
+
+    if str(definition.digests.get("algorithm") or "") != canonical.DIGEST_ALGORITHM:
+        errors.append("digests.algorithm does not match the canonical digest implementation")
+
+    on_exceeded = definition.cost_budget.get("on_exceeded") or {}
+    if not on_exceeded.get("terminal_outcome") or not on_exceeded.get("reason"):
+        errors.append("cost_budget.on_exceeded must declare terminal_outcome and reason")
+
+    loopback_target = (definition.approval_boundary.get("changes_to_approved_package") or {}).get("return_to")
+    if loopback_target is not None and str(loopback_target) != "implementation_planning":
+        errors.append("approval_boundary.changes_to_approved_package.return_to must target implementation_planning")
+
+    if errors:
+        raise ContractConfigurationError("definition consistency violations: " + "; ".join(errors))

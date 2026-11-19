@@ -674,6 +674,8 @@ class BuildExecutionInput(StrictModel):
     approved_plan_revision: int = Field(ge=1)
     approved_source_checkpoint: SourceCheckpoint
     processing_plan: ProcessingPlan
+    # build_execution.stop_on_criterion from the definition (empty = role default)
+    stop_on_criterion: tuple[str, ...] = ()
 
     @model_validator(mode="after")
     def _preflight_must_be_valid(self) -> BuildExecutionInput:

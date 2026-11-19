@@ -304,4 +304,28 @@ separate binding milestone.
   requires every zero to be exercised (NOT_SCORED fails the run). 16/16 eval cases,
   8/8 zeros at 0 violations. README.md created (quickstart incl. offline demo CLI
   flow); evals/README.md updated. 3 new scoreboard-semantics tests.
+- [x] (2026-11-18) Final cycle — comprehensive gap review + closure:
+  **yaml consumption audit** (section-by-section): definition block enforced by
+  run-store pinning (no mutation path after start); vocabularies, observability
+  persistent_events, ownership, build authorization_checks, synchronization.requires,
+  digests.algorithm, cost_budget.on_exceeded, and approval_boundary loopback target
+  are now PINNED by `validate_definition_consistency` (runs in --check and both
+  bootstrap paths) against their runtime implementations (enums, EventType,
+  safety.AUTHORIZATION_CHECKS / SYNCHRONIZATION_REQUIRES, canonical.DIGEST_ALGORITHM).
+  stop_on_criterion now flows definition → BuildExecutionInput → Builder (was a
+  hard-coded redeclaration); cost_budget.on_exceeded terminal_outcome/reason are
+  data-driven (were hard-coded). Consumed behaviorally: transitions, output_by_action,
+  decision_binding, creates_processing_plan, processing_plan_activation (plan activates
+  on decision approve via input assembly), completion_criteria, runtime_steps,
+  on_failure, accepts/records/emits, precondition, timeout_seconds, schema_validation
+  (8/8 points), dependency_validation, source_rules (researcher provenance validators),
+  sub_roles (coder injection into auditor), execution_order sequential (builder loop),
+  delegation. Documented-only (declarative policy, executable:false by declaration):
+  handoff_rules, role_guidance (consumed by SKILL.md/role briefs), artifact_keys.rules,
+  on_budget_exhausted/on_failure preserve lists (runtime preserves the superset of all
+  produced artifacts + explicit records). Modeled but unused by def-1: budget_reserve,
+  computation_timeout_seconds. G1–G8 all closed (Phase 1 gap fixes + P2-T5 approvals).
+  D11–D28 honored as recorded in the cycle entries; T7b loopback guardrail remains a
+  🟨 proposal pending user sign-off. 9 new tests (7 consistency-drift rows, stop-criterion
+  flow, on_exceeded policy).
 

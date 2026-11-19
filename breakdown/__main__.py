@@ -29,6 +29,7 @@ from breakdown.contracts import (
     build_contract_registry,
     mapped_output_keys,
     validate_alignment,
+    validate_definition_consistency,
 )
 from breakdown.demo import OfflineDemoCodingBackend, OfflineDemoRoleBackend
 from breakdown.engine import EngineError, WorkflowDefinitionError, load_workflow
@@ -41,6 +42,7 @@ def _run_check(settings: Settings) -> int:
         definition = load_workflow(settings.workflow_path)
         registry = build_contract_registry(definition)
         validate_alignment(registry, definition)
+        validate_definition_consistency(definition)
     except (WorkflowDefinitionError, ContractConfigurationError) as exc:
         print(f"check failed: {exc}")
         return 1
@@ -63,6 +65,7 @@ def _run_check(settings: Settings) -> int:
             uncovered_total += len(uncovered)
             print(f"  coverage: {stage.id} UNCOVERED {uncovered}")
     print(f"contracts: {len(registry)} aligned, 0 mismatches")
+    print("definition consistency: vocabularies, events, ownership, authorization, sync, digests, budget policy ok")
     if uncovered_total:
         print(f"produces coverage: {uncovered_total} uncovered keys")
         return 1

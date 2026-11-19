@@ -28,6 +28,7 @@ from pydantic import BaseModel
 from breakdown.models import ImplementationPlan, SourceCheckpoint, UserDecision
 
 SERIALIZER_PROFILE = "rfc8785-jcs-sha256-v1"
+DIGEST_ALGORITHM = "sha256"
 
 T = TypeVar("T", bound=BaseModel)
 

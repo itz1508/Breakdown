@@ -39,6 +39,11 @@ class Builder:
     async def execute_build(self, input_value: BuildExecutionInput, context: StageContext) -> BuildExecutionOutput:
         _revalidate_bindings(input_value)
         ordered = sorted(input_value.implementation_plan.tasks, key=lambda task: task.sequence)
+        stop_criteria = (
+            frozenset(CriterionResult(value) for value in input_value.stop_on_criterion)
+            if input_value.stop_on_criterion
+            else STOP_CRITERIA
+        )
         results: list[TaskResult] = []
         applied: list[str] = []
         stopped = False
@@ -59,7 +64,7 @@ class Builder:
             results.append(result)
             if result.criterion is CriterionResult.VALID:
                 applied.extend(target.path for target in task.target_paths)
-            if result.criterion in STOP_CRITERIA:
+            if result.criterion in stop_criteria:
                 stopped = True
         prepared = not stopped and all(row.criterion is CriterionResult.VALID for row in results)
         return BuildExecutionOutput(
