@@ -93,3 +93,37 @@ def test_bot_cli_stream(test_repo: Path, capsys: pytest.CaptureFixture[str]) -> 
     assert "[bot_started]" in captured.out
     assert "[intent_resolved]" in captured.out
     assert "[approval_needed]" in captured.out
+
+
+def test_bot_decide_cancel_transitions_to_terminal(test_repo: Path) -> None:
+    from breakdown.models import RunState
+
+    settings = Settings(target_repo=test_repo)
+    bot = BreakdownBot.from_settings(settings, offline_demo=True)
+
+    result = bot.run("go research subtract function", auto_approve=False)
+    assert result.status == "awaiting_decision"
+
+    record = bot.decide(result.run_id, "cancel", reason="user cancelled via bot")
+    assert record.state == RunState.TERMINAL
+    assert record.terminal_outcome == "cancelled"
+
+
+def test_bot_persists_and_retrieves_repo_baseline(test_repo: Path) -> None:
+    settings = Settings(target_repo=test_repo)
+    bot = BreakdownBot.from_settings(settings, offline_demo=True)
+
+    # Execute run to terminal completion
+    result = bot.run("implement subtract in calc.py", auto_approve=True)
+    assert result.status == "terminal"
+
+    # Inspect cross-session memory for the repository baseline
+    mem_docs = bot.memory.list("baselines/")
+    assert len(mem_docs) >= 1
+    assert mem_docs[0].path.startswith("baselines/")
+
+    # Retrieve baseline map using bot helper
+    repo_id = mem_docs[0].path.removeprefix("baselines/").removesuffix(".json")
+    baseline = bot.get_repo_baseline(repo_id)
+    assert baseline is not None
+    assert len(baseline.entries) >= 1

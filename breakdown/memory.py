@@ -178,16 +178,24 @@ class MemoryStore:
             conn.close()
 
 
+def _normalize_repo_id(repo_id: str) -> str:
+    """Normalize a repository identity (which may be a Windows/Posix path) into a safe memory key."""
+    cleaned = re.sub(r"[^a-zA-Z0-9_.-]+", "_", repo_id.replace("\\", "/")).strip("_")
+    return cleaned or "repo"
+
+
 def store_baseline_map(store: MemoryStore, baseline_map: BaselineMap, *, run_id: str | None = None) -> int:
     """Store an authoritative repository BaselineMap in cross-run memory."""
-    path = f"baselines/{baseline_map.repository_identity}.json"
+    safe_id = _normalize_repo_id(baseline_map.repository_identity)
+    path = f"baselines/{safe_id}.json"
     content = baseline_map.model_dump_json(indent=2)
     return store.write(path, content, run_id=run_id)
 
 
 def get_baseline_map(store: MemoryStore, repository_identity: str) -> BaselineMap | None:
     """Retrieve the head BaselineMap for a repository identity, or None."""
-    path = f"baselines/{repository_identity}.json"
+    safe_id = _normalize_repo_id(repository_identity)
+    path = f"baselines/{safe_id}.json"
     doc = store.read(path)
     if doc is None:
         return None

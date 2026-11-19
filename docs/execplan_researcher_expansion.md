@@ -51,6 +51,15 @@ Observable behaviors:
 | **G21-4** | Med | `RunRecord` had no explicit `runtime_kind` field; runtime affinity was inferred or unchecked across cross-process resumptions. | Added `runtime_kind: Literal["offline_demo", "live_openai"] | None = None` to `RunRecord`. Pinned in `engine.start_run()`; verified in `engine.advance()` to reject mismatched backend resumption. |
 | **G21-5** | Med | Researcher lacked bounded client-side web access tooling for documentation and external reference lookup. | Implemented `web_search` canonical tool in `breakdown/tools.py` using `httpx` with `allowed_domains`, `max_uses`, token cost accounting, and rejection of encrypted or binary payloads. Registered in `TOOLS["web_search"]` and `ROLE_TOOL_ALLOWLIST["researcher"]`. |
 
+### Round 22 — Cross-Session Baseline Memory, Bot Decision Lifecycle & Path Normalization (2026-11-19) ✅
+
+| Gap ID | Severity | Discovered Gap | Resolution / Fix |
+|---|---|---|---|
+| **G22-1** | High | `store_baseline_map` in `breakdown/memory.py` constructed memory paths `baselines/{repo_id}.json` directly from `repository_identity`. On Windows, repo identities contain backslashes (`\`) and drive colons (`:`), causing `validate_memory_path` to reject them. | Implemented `_normalize_repo_id(repo_id)` in `breakdown/memory.py` using regex sanitization (`[^a-zA-Z0-9_.-]+` -> `_`), producing guaranteed valid, traversal-free memory keys across all OS platforms. |
+| **G22-2** | High | `store_baseline_map` was never called by the engine upon run completion, leaving cross-session baseline memory empty after successful runs. | Wired baseline persistence into `engine._write_run_lesson`: when `research_response` artifact exists and carries `baseline_map`, `store_baseline_map(memory, resp.baseline_map)` is called automatically. |
+| **G22-3** | Med | `BreakdownBot.decide()` called `self.engine.approvals.record_decision()` directly instead of `self.engine.record_decision()`, bypassing the engine's completion handler and terminal transition on cancellations. | Updated `BreakdownBot.decide()` to delegate to `self.engine.record_decision()`, returning updated `RunRecord` and ensuring terminal outcomes (e.g. `cancelled`) are triggered. |
+| **G22-4** | Low | Missing integration tests for `bot.decide()`, `bot.get_repo_baseline()`, and `RoleToolkit.call("web_search")`. | Added `test_bot_decide_cancel_transitions_to_terminal` and `test_bot_persists_and_retrieves_repo_baseline` in `tests/test_bot.py`, and `test_web_search_dispatch_and_toolkit` in `tests/test_tools.py`. Total test suite increased to 308 tests. |
+
 ---
 
 ## 3. Progress

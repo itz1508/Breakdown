@@ -16,7 +16,6 @@ from typing import Any, Literal
 
 from pydantic import AwareDatetime, Field
 
-from breakdown.approvals import DecisionOutcome
 from breakdown.bootstrap import Runtime, build_runtime
 from breakdown.engine import WorkflowEngine
 from breakdown.memory import MemoryStore, get_baseline_map
@@ -340,9 +339,9 @@ class BreakdownBot:
         *,
         user_identity: str = "user",
         reason: str = "",
-    ) -> DecisionOutcome:
-        """Record decision on a pending approval."""
-        return self.engine.approvals.record_decision(
+    ) -> RunRecord:
+        """Record decision on a pending approval and update workflow lifecycle."""
+        return self.engine.record_decision(
             run_id,
             action=action,
             user_identity=user_identity,

@@ -466,7 +466,7 @@ OpenAI-compatible endpoints (Databricks key or custom API key).
   execution_order sequential), streaming/resume/hooks capabilities, CMA
   interop, decomposition-audit eval zero (cookbook caveat: "the facts were
   audited; the question decomposition wasn't").
-- Tests: 305 passing tests (including 7 comprehensive lifecycle and invariant tests), 16/16 offline evals with
+- Tests: 308 passing tests (including 7 lifecycle and invariant tests, bot decision lifecycle tests, and baseline memory persistence tests), 16/16 offline evals with
   8/8 blocking zeros holding, mypy strict clean (30 source files), ruff clean. Full gate green.
 
 

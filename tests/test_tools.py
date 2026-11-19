@@ -171,3 +171,18 @@ def test_web_search_encrypted_content_rejected(repo: Path) -> None:
 
     with pytest.raises(ValueError, match="encrypted or binary"):
         web_search(WebSearchRequest(query="download encrypted blob"))
+
+
+def test_web_search_dispatch_and_toolkit(repo: Path) -> None:
+    from breakdown.roles import RoleToolkit
+
+    # Test via dispatch_tool
+    dispatched = dispatch_tool("web_search", {"query": "pytest test runner"}, root=repo)
+    assert dispatched.uses_consumed >= 1
+    assert len(dispatched.results) >= 1
+
+    # Test via Researcher RoleToolkit
+    toolkit = RoleToolkit(role="researcher", root=repo)
+    assert "web_search" in toolkit.allowed_names()
+    result = toolkit.call("web_search", {"query": "site:python.org unittest", "allowed_domains": ["python.org"]})
+    assert result.results[0].domain == "python.org"

@@ -1102,6 +1102,17 @@ class WorkflowEngine:
         with contextlib.suppress(Exception):
             memory.write(path, "\n".join(lines), run_id=run_id)
 
+        # Cross-session baseline memory preservation (D40)
+        ref = record.produced_artifacts.get("research_response")
+        if ref is not None:
+            from breakdown.memory import store_baseline_map
+            from breakdown.models import ResearchRecord
+
+            with contextlib.suppress(Exception):
+                resp = self.stores.artifacts.get_model(ResearchRecord, ref.artifact_key, ref.revision)
+                if resp.baseline_map is not None:
+                    store_baseline_map(memory, resp.baseline_map, run_id=run_id)
+
     def record_decision(self, run_id: str, action: str, *, user_identity: str, reason: str = "") -> RunRecord:
         outcome = self.approvals.record_decision(run_id, action, user_identity=user_identity, reason=reason)
         if outcome.terminal:
