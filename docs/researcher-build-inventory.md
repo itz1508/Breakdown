@@ -74,22 +74,18 @@ This document establishes the comprehensive inventory and technical blueprint fo
     - `worker_access: read_only`
     - `worker_output_authority: evidence_input_only`
 
-### Capability 4: Automations Architecture & Trigger Integration (D42 Refactored)
-* **Primary Source**: *"Automations Draft Wire Format"* (`prefillWorkflowData` for `open_automation`) + Managed Agents Runtime
-* **Automations Draft Skeleton**:
-  - Declared in `breakdown/automations.py` (`AutomationDraft`, `AutomationWorkflow`).
-  - Wire format matches reviewed Automations draft passed to `open_automation` as `prefillWorkflowData` (canonical proto JSON with full enum names).
-* **Exhaustive Trigger Oneof Keys**:
-  - Every entry in `workflow.triggers` must use exactly one of the 12 canonical keys: `cron`, `git`, `slackTrigger`, `slackReactionAdded`, `slackChannelCreated`, `emailReceived`, `microsoftTeamsTrigger`, `microsoftTeamsChannelCreated`, `linear`, `webhook`, `pagerduty`, `sentry`.
-  - Rejects invented or paraphrased keys (`slackReaction`, `slack_reaction`, `slack`, `reactionAdded`) which silently drop into unconfigurable cards in the editor.
-* **Canonical Slack Invariants (Refactored from standalone Socket Mode bot)**:
-  - **Triggers**: `slackTrigger` (channel mention/keyword) and `slackReactionAdded` (reaction approval e.g. `:white_check_mark:`); channel IDs must start with `C…` (public) or `G…` (private group).
-  - **Actions**: `slack` action emitting messages; channel IDs must start with `C…` (public), `G…` (private group), or `D…` (resolves to automation owner's DM).
-  - **Prompts**: Rendered with YAML `|` block scalar to preserve formatting and bullet points without folding.
-  - **Bot Ingestion**: `BreakdownBot.parse_trigger()` ingests and routes trigger payloads, while `BreakdownBot.emit_slack_action()` validates and formats responses.
-* **Deployment & Execution**:
-  - **CLI / Local**: `breakdown automation draft`, `breakdown automation validate`, and `breakdown bot --trigger`.
-  - **Interactive Stream**: `BreakdownBot.run_trigger_stream()` yielding typed `BotEvent`s.
+### Capability 4: Breakdown Bot & Runtime Lifecycle Invariants (D43 Refactored)
+* **Primary Source**: Managed Agents Runtime & Async Lifecycle Cookbooks (Reference patterns, not build targets)
+* **D43 Invariant Refactor (Supersedes Slack and Automations draft scaffolding)**:
+  - References are guidance for planning and refactor, not source to copy. Slack socket mode bots and Automations draft wire format scaffolding are retired.
+  - **Single Event-Loop Owner**: CLI calls `main()` synchronously; `WorkflowEngine._activate_with_timeout()` isolates coroutine execution via dedicated worker executor when an active event loop is detected, avoiding nested `asyncio.run()` collisions.
+  - **Explicit Backend Close Lifecycle**: `aclose()` methods on `OpenAICompatibleRoleBackend` and `OpenAICompatibleCodingBackend` deterministically close underlying client connection pools on all exit paths (normal completion, cancellation, timeout, or crash).
+  - **Explicit Runtime Kind**: `RunRecord.runtime_kind` explicitly records `offline_demo` vs `live_openai`; verified on resume to reject cross-backend resumption.
+  - **Bounded Web Access**: Canonical `web_search` tool implemented with `httpx`, bounded by `allowed_domains`, `max_uses`, token cost calculation, and rejection of encrypted or binary payloads.
+* **Breakdown Bot Architecture**:
+  - Independent runtime in `breakdown/bot.py` and CLI `breakdown bot "<task>"`.
+  - Intent resolution ("go research...", "go plan...", "implement..."), typed `BotEvent` streaming, interactive decision routing, and auto-approval capabilities.
+  - Context managers (`__enter__`/`__exit__`, `__aenter__`/`__aexit__`) ensure deterministic lockfile release and resource disposal.
 
 ### Capability 5: Cross-Session Memory Stores
 * **Primary Source**: *"Build agents that remember your users"* (Managed Agents Memory)

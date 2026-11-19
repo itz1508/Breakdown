@@ -39,20 +39,24 @@ Observable behaviors:
 | **G19-4** | Low | 3 researcher tests (setup errors) due to Windows file-lock on stale `.pytest-tmp` SQLite DBs from a lingering Python process. | Killed stale Python processes; removed `.pytest-tmp` before rerunning. All tests pass with clean temp state. |
 
 ### Round 20 — Refactor all {slack} to Canonical Automations Drafts (2026-11-19) ✅
+*(Superseded by Round 21 / Decision D43 per directive)*
+
+### Round 21 — Runtime Lifecycle Invariants & Scope Realignment (2026-11-19) ✅
 
 | Gap ID | Severity | Discovered Gap | Resolution / Fix |
 |---|---|---|---|
-| **G20-1** | High | Legacy Slack integration specified standalone Socket Mode bot (`slack_app_manifest.yaml`, Slack Bolt adapter) instead of the canonical Automations draft schema matching `open_automation` wire format (`prefillWorkflowData`). | Built `breakdown/automations.py` (`AutomationDraft`, `AutomationWorkflow`). Enforces the 12 exhaustive trigger oneofs: `cron`, `git`, `slackTrigger`, `slackReactionAdded`, `slackChannelCreated`, `emailReceived`, `microsoftTeamsTrigger`, `microsoftTeamsChannelCreated`, `linear`, `webhook`, `pagerduty`, `sentry`. Rejects paraphrased keys (`slackReaction`, `slack_reaction`, `slack`). |
-| **G20-2** | Med | Slack channel ID constraints and Git PR naming not enforced. | Enforced in `breakdown/automations.py`: Triggers (`slackTrigger`, `slackReactionAdded`) accept `C…` (public) or `G…` (private group); actions accept `C…`, `G…`, or `D…` (resolves to owner DM). Git PR scope enforces `ignoreDraftPrs` (rejects singular `ignoreDraftPr`). |
-| **G20-3** | Med | Prompts in YAML exports folded bullet points into invalid single lines when using standard flow formatting. | Implemented YAML custom dumper using `|` block scalar representation for prompts containing newlines, preserving bullet points and Markdown structure without folding. |
-| **G20-4** | Low | BreakdownBot lacked trigger payload ingestion for event-driven automation execution. | Implemented `BreakdownBot.parse_trigger()`, `BreakdownBot.emit_slack_action()`, and `BreakdownBot.run_trigger_stream()`. Integrated into CLI via `breakdown bot --trigger <key> --trigger-payload <json>` and `breakdown automation draft/validate`. |
+| **G21-1** | High | Automations drafts and Slack wire format scaffolding were out of scope per user D43 directive ("References are guidance for planning and refactor, not source to copy... The Slack bot, Managed Agents cookbooks and async orchestration cookbook are patterns, not build targets. Supersedes D42"). | Retired and deleted `breakdown/automations.py` and `tests/test_automations.py`. Cleaned `breakdown/bot.py` and `breakdown/__main__.py` to remove non-deployable trigger ingestion and slack-specific commands. |
+| **G21-2** | High | `AsyncOpenAI` backend clients had no close path anywhere in the codebase (`not_valid`), leaving connection pools dangling on abort/error/cancel. | Implemented `aclose()` on `OpenAICompatibleRoleBackend` and `OpenAICompatibleCodingBackend`. Integrated into `Runtime.aclose()` and `BreakdownBot.close()` / `BreakdownBot.aclose()`. |
+| **G21-3** | High | `engine._activate_with_timeout` called `asyncio.run(coro)` directly, failing when invoked inside an existing event loop. | Implemented thread pool executor bridge in `engine._activate_with_timeout` when a running event loop is detected, allowing `advance()` to run inside async processes without nested event loop conflict. |
+| **G21-4** | Med | `RunRecord` had no explicit `runtime_kind` field; runtime affinity was inferred or unchecked across cross-process resumptions. | Added `runtime_kind: Literal["offline_demo", "live_openai"] | None = None` to `RunRecord`. Pinned in `engine.start_run()`; verified in `engine.advance()` to reject mismatched backend resumption. |
+| **G21-5** | Med | Researcher lacked bounded client-side web access tooling for documentation and external reference lookup. | Implemented `web_search` canonical tool in `breakdown/tools.py` using `httpx` with `allowed_domains`, `max_uses`, token cost accounting, and rejection of encrypted or binary payloads. Registered in `TOOLS["web_search"]` and `ROLE_TOOL_ALLOWLIST["researcher"]`. |
 
 ---
 
 ## 3. Progress
 
 - [x] (2026-11-19) Gap analysis conducted against 7 cookbook sources, `breakdown.yaml`, and codebase.
-- [x] (2026-11-19) Decision D39 recorded in `PLANS.md`; Decisions D40 & D41 adopted.
+- [x] (2026-11-19) Decision D39 recorded in `PLANS.md`; Decisions D40, D41, D43 adopted.
 - [x] Task 1: Data models expansion (`BaselineMap`, `ScaffoldingEntry`, updated `NormalizedEvidence`, updated `ResearchRecord` in `breakdown/models.py`).
 - [x] Task 2: Semantic search tool implementation (`breakdown/semantic_search.py`) with hybrid offline fallback and canonical tool registry registration (`TOOLS["semantic_search"]`).
 - [x] Task 3: Researcher autonomous engine (`breakdown/roles/researcher.py`) with AST baseline mapping, evidence normalization, and provenance validation.
@@ -60,7 +64,8 @@ Observable behaviors:
 - [x] Task 5: Memory conventions & helpers for baseline maps (`store_baseline_map`, `get_baseline_map` in `breakdown/memory.py`).
 - [x] Task 6: Breakdown Bot runtime (`breakdown/bot.py`, CLI `breakdown bot`) with intent parsing, `BotEvent` streaming, decision routing, and session management.
 - [x] Task 7: Comprehensive test suite verification (295 tests pass, 16/16 offline evals, ruff clean, mypy strict clean).
-- [x] Task 8: Refactor all {slack} into canonical Automations Drafts (`breakdown/automations.py`, CLI `breakdown automation draft/validate`, trigger ingestion in `breakdown/bot.py`, 33 unit tests in `tests/test_automations.py`). (Decision D42)
+- [x] Task 8: [SUPERSEDED by D43] Retired Automations Drafts (`breakdown/automations.py`).
+- [x] Task 9: Runtime Lifecycle Invariants & Web Access Tooling (Decision D43: client `aclose()`, `runtime_kind`, event loop safety, `web_search` tool, 7 new lifecycle tests in `tests/test_lifecycle.py`, 305 total tests passing).
 
 ---
 
@@ -78,6 +83,7 @@ Observable behaviors:
 - **Decision D40**: Researcher owns `BaselineMap` and `NormalizedEvidence` authoring within `ResearchRecord`; Auditor's `review_research_findings` acts as independent verification gate. Offline-first fallback implemented for vector search. (2026-11-19 / ExecPlan)
 - **Decision D41**: Breakdown Bot pattern replaces generic Slack bot. Round 19 gap fixes accepted. (2026-11-19 / ExecPlan, commit `0891091`)
 - **Decision D42**: Refactor all `{slack}` integrations and specifications from standalone Socket Mode bot manifests into canonical Automations drafts and wire format matching `open_automation` (`prefillWorkflowData`). Enforce exhaustive trigger oneofs (`cron`, `git`, `slackTrigger`, `slackReactionAdded`, `slackChannelCreated`, etc.), C/G channel constraints for triggers, C/G/D for actions, and `ignoreDraftPrs`. (2026-11-19 / ExecPlan)
+- **Decision D43**: Runtime lifecycle invariants & scope discipline. Supersedes D42 and Slack/Automations scaffolding. Enforces: (1) async core with single event-loop owner per process, (2) backend `aclose()` and resource cleanup on all exit paths, (3) explicit `runtime_kind` tracking and resume affinity check in `engine.advance()`, (4) bounded client-side `web_search` tool in `tools.py` using `httpx` with `allowed_domains`, `max_uses`, cost accounting, and rejection of encrypted/binary content. (2026-11-19 / ExecPlan)
 
 ---
 
@@ -133,15 +139,15 @@ Observable behaviors:
 - Integrate into CLI as `breakdown bot "<task>"` with `--stream` and `--auto-approve`.
 - **Named Check**: `uv run pytest tests/test_bot.py` exits 0.
 
-### Task 8: Canonical Automations Drafts & Trigger Integration (`breakdown/automations.py`, D42)
-- Refactor all `{slack}` integrations and specifications from standalone Socket Mode bot manifests into canonical Automations drafts and wire format matching `open_automation` (`prefillWorkflowData`).
-- Implement `AutomationDraft` and `AutomationWorkflow` with exhaustive trigger oneofs (12 canonical keys: `cron`, `git`, `slackTrigger`, `slackReactionAdded`, `slackChannelCreated`, etc.).
-- Enforce Slack channel constraints: `C…`/`G…` for triggers; `C…`/`G…`/`D…` (owner DM) for actions.
-- Enforce git PR scope: `ignoreDraftPrs` (not `ignoreDraftPr`).
-- Preserve prompt formatting with `|` block scalar representation in YAML.
-- Integrate trigger ingestion into `BreakdownBot.parse_trigger()`, `emit_slack_action()`, and `run_trigger_stream()`.
-- Expose via CLI: `breakdown automation draft`, `breakdown automation validate`, and `breakdown bot --trigger`.
-- **Named Check**: `uv run pytest tests/test_automations.py` exits 0.
+### Task 8: [SUPERSEDED by D43] Canonical Automations Drafts
+- Retired per D43. External Slack bot manifests and Automations draft scaffolding were superseded in favor of native Breakdown runtime lifecycle invariants.
+
+### Task 9: Runtime Lifecycle Invariants & Researcher Web Tooling (D43)
+- Ensure one event-loop owner per process; `engine._activate_with_timeout` safely bridges running loops via thread pool executor without nested `asyncio.run()`.
+- Add `aclose()` methods to `OpenAICompatibleRoleBackend`, `OpenAICompatibleCodingBackend`, `Runtime`, and `BreakdownBot` for deterministic resource release on every exit path.
+- Add `runtime_kind: Literal["offline_demo", "live_openai"] | None = None` to `RunRecord` and enforce affinity checks on `engine.advance()`.
+- Implement client-side `web_search` canonical tool in `breakdown/tools.py` using `httpx` with `allowed_domains`, `max_uses`, token cost calculation, and binary/encrypted payload rejection. Register in `TOOLS["web_search"]` and `ROLE_TOOL_ALLOWLIST["researcher"]`.
+- **Named Check**: `uv run pytest tests/test_lifecycle.py tests/test_tools.py` exits 0.
 
 ---
 

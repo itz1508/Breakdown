@@ -164,6 +164,10 @@ class OpenAICompatibleRoleBackend:
         self._retry_base_delay = retry_base_delay
         self._memory_root = memory_root
 
+    async def aclose(self) -> None:
+        """Close underlying AsyncOpenAI client connection pool (D43)."""
+        await self._client.close()
+
     async def generate(self, request: RoleBackendRequest) -> RoleBackendResponse:
         allowed = tuple(request.tool_names)
         tools = tool_schemas(allowed) if allowed else None
@@ -302,6 +306,10 @@ class OpenAICompatibleCodingBackend:
         self._client = client
         self._model = model
         self._retry_base_delay = retry_base_delay
+
+    async def aclose(self) -> None:
+        """Close underlying AsyncOpenAI client connection pool (D43)."""
+        await self._client.close()
 
     async def apply_task(self, request: CodingBackendRequest) -> CodingBackendResult:
         task = request.task

@@ -34,6 +34,7 @@ _RESEARCHER_BRIEF = (
     "Synthetic samples are never evidence. Select no implementation. "
     "If memory tools are available, consult prior-run lessons (memory_list, "
     "memory_read, memory_search) for previously resolved questions. "
+    "If web access is needed, use web_search with allowed_domains and max_uses constraints. "
     "Map the repository build baseline and inventory module responsibilities."
 )
 

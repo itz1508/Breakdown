@@ -16,6 +16,7 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Literal
 
 from breakdown.approvals import ApprovalManager
 from breakdown.artifact_store import ArtifactStore
@@ -171,6 +172,27 @@ class Runtime:
     contracts: ContractRegistry
     bindings: BackendBindingStore
     settings: Settings
+    role_backends: Mapping[str, Any] | None = None
+    coding_backend: Any | None = None
+
+    def close(self) -> None:
+        """Synchronously release lockfile and close resources (D43)."""
+        self.lock.release()
+
+    async def aclose(self) -> None:
+        """Asynchronously close backend clients and release lockfile (D43)."""
+        if self.role_backends:
+            for b in self.role_backends.values():
+                if hasattr(b, "aclose"):
+                    await b.aclose()
+                elif hasattr(b, "close"):
+                    b.close()
+        if self.coding_backend is not None:
+            if hasattr(self.coding_backend, "aclose"):
+                await self.coding_backend.aclose()
+            elif hasattr(self.coding_backend, "close"):
+                self.coding_backend.close()
+        self.lock.release()
 
 
 def build_runtime(
@@ -180,6 +202,7 @@ def build_runtime(
     role_backends: Mapping[str, RoleBackend] | None = None,
     coding_backend: CodingBackend,
     offline_demo: bool = False,
+    runtime_kind: Literal["offline_demo", "live_openai"] | None = None,
     force_unlock: bool = False,
 ) -> Runtime:
     """Construct stores, lockfile guard, approvals, and the workflow engine.
@@ -235,13 +258,22 @@ def build_runtime(
             "builder": Builder(backend=coding_backend, sandbox_root=sandbox or target_root),
         }
 
+    resolved_kind = runtime_kind
+    if resolved_kind is None and offline_demo:
+        resolved_kind = "offline_demo"
+
     engine = WorkflowEngine(
         definition=definition,
         contracts=contracts,
         stores=stores,
         approvals=approvals,
         role_factory=role_factory,
+        runtime_kind=resolved_kind,
     )
+    effective_backends: dict[str, Any] = dict(role_backends or {})
+    if role_backend is not None:
+        effective_backends.setdefault("default", role_backend)
+
     return Runtime(
         engine=engine,
         stores=stores,
@@ -251,6 +283,8 @@ def build_runtime(
         contracts=contracts,
         bindings=bindings,
         settings=settings,
+        role_backends=effective_backends,
+        coding_backend=coding_backend,
     )
 
 

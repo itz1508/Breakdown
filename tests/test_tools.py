@@ -80,7 +80,7 @@ def test_dispatch_unknown_tool_denied(repo: Path) -> None:
 
 
 def test_registry_exposes_model_callable_tools() -> None:
-    # D36: three read-only memory tools join source tools; semantic_search added for Researcher.
+    # D36: three read-only memory tools join source tools; semantic_search added for Researcher; D43: web_search.
     assert set(TOOLS) == {
         "capability_inspect",
         "source_search",
@@ -89,6 +89,7 @@ def test_registry_exposes_model_callable_tools() -> None:
         "memory_read",
         "memory_search",
         "semantic_search",
+        "web_search",
     }
     for forbidden in (
         "proposal_create",
@@ -110,6 +111,7 @@ def test_role_allowlists_match_matrix() -> None:
         "memory_read",
         "memory_search",
         "semantic_search",
+        "web_search",
     }
     assert "capability_inspect" in ROLE_TOOL_ALLOWLIST["auditor"]
     assert "semantic_search" in ROLE_TOOL_ALLOWLIST["auditor"]
@@ -137,3 +139,35 @@ def test_semantic_search_dispatch(repo: Path) -> None:
     report = dispatch_tool("semantic_search", {"query": "return a + b"}, root=repo)
     assert len(report.matches) >= 1
     assert report.matches[0].path == "src/calc.py"
+
+
+def test_web_search_enforces_domain_and_use_limits(repo: Path) -> None:
+    from breakdown.tools import ToolNotAuthorized, WebSearchRequest, web_search
+
+    # Domain in allowed_domains succeeds
+    res = web_search(WebSearchRequest(query="site:python.org pytest", allowed_domains=("python.org",)))
+    assert res.uses_consumed <= 5
+    assert len(res.results) >= 1
+    assert res.results[0].domain == "python.org"
+    assert res.search_cost_tokens > 0
+
+    # Domain not in allowed_domains raises ToolNotAuthorized
+    with pytest.raises(ToolNotAuthorized):
+        web_search(WebSearchRequest(query="site:untrusted.com exploit", allowed_domains=("python.org",)))
+
+
+def test_web_search_offline_fallback_or_error(repo: Path) -> None:
+    from breakdown.tools import WebSearchRequest, web_search
+
+    # Offline query without specific domain gracefully falls back
+    res = web_search(WebSearchRequest(query="pytest fixture patterns"))
+    assert res.uses_consumed >= 1
+    assert len(res.results) >= 1
+    assert res.search_cost_tokens > 0
+
+
+def test_web_search_encrypted_content_rejected(repo: Path) -> None:
+    from breakdown.tools import WebSearchRequest, web_search
+
+    with pytest.raises(ValueError, match="encrypted or binary"):
+        web_search(WebSearchRequest(query="download encrypted blob"))

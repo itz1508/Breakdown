@@ -447,11 +447,26 @@ OpenAI-compatible endpoints (Databricks key or custom API key).
   disciplines (`C…`/`G…` for triggers; `C…`/`G…`/`D…` resolving to owner DM for actions), git `ignoreDraftPrs`,
   and `|` block scalar prompt formatting. Integrated trigger ingestion (`parse_trigger`, `emit_slack_action`,
   `run_trigger_stream`) into `BreakdownBot` and added `automation draft` / `automation validate` CLI commands.
+- [x] (2026-11-19) D43 — Runtime lifecycle invariants and scope discipline:
+  Supersedes D42 and Slack/Automations draft scaffolding. References are guidance for planning
+  and refactor, not source to copy. Enforces:
+  1. Async core with one event loop owner per process: `_activate_with_timeout` safely bridges
+     running loops via dedicated worker pool without nested `asyncio.run()`.
+  2. Backend close lifecycle: `aclose()` and `close()` implemented on `BreakdownBot`, `Runtime`,
+     `OpenAICompatibleRoleBackend`, and `OpenAICompatibleCodingBackend`, ensuring underlying
+     client connection pools and lockfiles are released on every exit path (complete, cancel, crash).
+  3. Explicit `runtime_kind` field on `RunRecord` (`Literal["offline_demo", "live_openai"]`):
+     stored explicitly, never inferred from ID prefixes; `engine.advance` enforces runtime affinity
+     on resume, rejecting mismatches.
+  4. Researcher web access: client-side `web_search` canonical tool in `tools.py` using `httpx` with
+     `allowed_domains`, `max_uses`, cost accounting in `search_cost_tokens`, and rejection of binary
+     or encrypted content.
+  5. Retired non-deployable `automations.py` and `test_automations.py`.
 - Deferred (Phase 3b): parallel worker fan-out (def-1 declares
   execution_order sequential), streaming/resume/hooks capabilities, CMA
   interop, decomposition-audit eval zero (cookbook caveat: "the facts were
   audited; the question decomposition wasn't").
-- Tests: 328 passing tests (295 baseline + 33 automations/bot trigger tests), 16/16 offline evals with
-  8/8 blocking zeros holding, mypy strict clean (31 source files), ruff clean. Full gate green.
+- Tests: 305 passing tests (including 7 comprehensive lifecycle and invariant tests), 16/16 offline evals with
+  8/8 blocking zeros holding, mypy strict clean (30 source files), ruff clean. Full gate green.
 
 

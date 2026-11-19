@@ -857,6 +857,7 @@ class RunRecord(StrictModel):
     workflow_id: str = Field(min_length=1)
     definition_version: int = Field(ge=1)
     definition_digest: str = Field(min_length=1)
+    runtime_kind: Literal["offline_demo", "live_openai"] | None = None
     state: RunState = RunState.CREATED
     current_stage: str | None = None
     stage_attempts: Mapping[str, int] = Field(default_factory=dict)

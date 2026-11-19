@@ -261,12 +261,14 @@ class WorkflowEngine:
         stores: EngineStores,
         approvals: ApprovalManager,
         role_factory: RoleFactory,
+        runtime_kind: Literal["offline_demo", "live_openai"] | None = None,
     ) -> None:
         self.definition = definition
         self.contracts = contracts
         self.stores = stores
         self.approvals = approvals
         self.role_factory = role_factory
+        self.runtime_kind = runtime_kind
         self._definition_digest = compute_definition_digest(definition.model_dump(mode="json"))
 
     def _reload(self, run_id: str) -> RunRecord:
@@ -294,6 +296,7 @@ class WorkflowEngine:
             workflow_id=self.definition.workflow_id,
             definition_version=self.definition.definition_version,
             definition_digest=self._definition_digest,
+            runtime_kind=self.runtime_kind,
             state=RunState.RUNNING,
             current_stage="research_proposal",
             initial_request_ref=request_ref,
@@ -312,6 +315,15 @@ class WorkflowEngine:
             if loaded is None:
                 raise EngineError(f"run {run_id} not found")
             revision, record = loaded
+            if (
+                self.runtime_kind is not None
+                and record.runtime_kind is not None
+                and record.runtime_kind != self.runtime_kind
+            ):
+                raise EngineError(
+                    f"runtime_kind mismatch for run {run_id}: "
+                    f"stored {record.runtime_kind!r} != active {self.runtime_kind!r}"
+                )
             if record.state in (RunState.TERMINAL, RunState.AWAITING_DECISION):
                 return record
             stage_id = record.current_stage
@@ -896,11 +908,22 @@ class WorkflowEngine:
     ) -> StageResult:
         """Contract activation bounded by the stage's declared timeout_seconds."""
         coro = activate_role_contract(contract, input_value, context, roles)
-        if timeout_seconds is None:
-            return asyncio.run(coro)
 
         async def _bounded() -> StageResult:
+            if timeout_seconds is None:
+                return await coro
             return await asyncio.wait_for(coro, timeout=float(timeout_seconds))
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop is not None and loop.is_running():
+            import concurrent.futures
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                return pool.submit(asyncio.run, _bounded()).result()
 
         return asyncio.run(_bounded())
 

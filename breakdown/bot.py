@@ -17,12 +17,6 @@ from typing import Any, Literal
 from pydantic import AwareDatetime, Field
 
 from breakdown.approvals import DecisionOutcome
-from breakdown.automations import (
-    EXHAUSTIVE_TRIGGER_KEYS,
-    SlackAction,
-    SlackReactionAddedTrigger,
-    SlackTrigger,
-)
 from breakdown.bootstrap import Runtime, build_runtime
 from breakdown.engine import WorkflowEngine
 from breakdown.memory import MemoryStore, get_baseline_map
@@ -134,132 +128,25 @@ class BreakdownBot:
         """Inspect cached baseline map in cross-session memory store."""
         return get_baseline_map(self.memory, repository_identity)
 
-    def parse_trigger(self, trigger_key: str, payload: dict[str, Any]) -> dict[str, Any]:
-        """Ingest and validate a trigger payload conforming to Automations trigger oneofs (D42).
+    def close(self) -> None:
+        """Release lockfile and close runtime resources (D43)."""
+        self.runtime.close()
 
-        Every trigger must use an exhaustive proto key (e.g. 'slackTrigger', 'slackReactionAdded',
-        'cron', 'git'). Rejects invented or paraphrased keys.
-        """
-        if trigger_key not in EXHAUSTIVE_TRIGGER_KEYS:
-            raise ValueError(
-                f"Invalid trigger key {trigger_key!r}. Must be one of: {sorted(EXHAUSTIVE_TRIGGER_KEYS)!r}. "
-                "Never invent or paraphrase keys (e.g. 'slackReaction', 'slack_reaction')."
-            )
+    async def aclose(self) -> None:
+        """Asynchronously close backend clients and release lockfile (D43)."""
+        await self.runtime.aclose()
 
-        if trigger_key == "slackTrigger":
-            channel_id = str(payload.get("channel_id", ""))
-            SlackTrigger.validate_channel_id(channel_id)
-            text = str(payload.get("text", payload.get("message", ""))).strip()
-            # Clean @mention prefix if present (e.g. '<@U12345> go research XYZ')
-            clean_text = re.sub(r"^<@[A-Z0-9]+>\s*", "", text)
-            intent = self.parse_intent(clean_text)
-            return {
-                "trigger_key": trigger_key,
-                "channel_id": channel_id,
-                "raw_text": text,
-                "task": clean_text or text,
-                "intent": intent,
-                "user_id": payload.get("user_id", "slack_user"),
-            }
+    def __enter__(self) -> BreakdownBot:
+        return self
 
-        elif trigger_key == "slackReactionAdded":
-            channel_id = str(payload.get("channel_id", ""))
-            SlackReactionAddedTrigger.validate_channel_id(channel_id)
-            reaction = str(payload.get("reaction", "")).strip()
-            # Map standard emoji reactions to approval actions if applicable
-            action_map = {
-                "white_check_mark": "approve",
-                "+1": "approve",
-                "heavy_check_mark": "approve",
-                "x": "decline",
-                "-1": "decline",
-            }
-            action = action_map.get(reaction.strip(":"), "unknown")
-            return {
-                "trigger_key": trigger_key,
-                "channel_id": channel_id,
-                "reaction": reaction,
-                "mapped_action": action,
-                "item_user": payload.get("item_user"),
-                "run_id": payload.get("run_id"),
-            }
+    def __exit__(self, *args: Any) -> None:
+        self.close()
 
-        elif trigger_key == "slackChannelCreated":
-            channel_id = str(payload.get("channel_id", ""))
-            channel_name = str(payload.get("channel_name", ""))
-            return {
-                "trigger_key": trigger_key,
-                "channel_id": channel_id,
-                "channel_name": channel_name,
-            }
+    async def __aenter__(self) -> BreakdownBot:
+        return self
 
-        # Generic fallback for cron, git, linear, webhook, etc.
-        return {
-            "trigger_key": trigger_key,
-            "task": str(payload.get("task", payload.get("prompt", ""))),
-            "payload": payload,
-        }
-
-    def emit_slack_action(
-        self,
-        channel_id: str,
-        message: str,
-        *,
-        thread_ts: str | None = None,
-    ) -> dict[str, Any]:
-        """Emit a canonical Slack action payload with validated channel ID (D42).
-
-        Channel ID must start with:
-        - 'C': public channel
-        - 'G': private group / channel
-        - 'D': automation owner's direct message (DM)
-        """
-        action = SlackAction(channel_id=channel_id, message=message, thread_ts=thread_ts)
-        return {"slack": action.model_dump(exclude_none=True)}
-
-    def run_trigger_stream(
-        self,
-        trigger_key: str,
-        payload: dict[str, Any],
-        *,
-        session_id: str | None = None,
-        auto_approve: bool = False,
-    ) -> Iterator[BotEvent]:
-        """Execute a trigger payload yielding streaming BotEvents."""
-        parsed = self.parse_trigger(trigger_key, payload)
-
-        # Handle Slack reaction as a decision on an existing run if run_id is supplied
-        is_reaction = trigger_key == "slackReactionAdded"
-        is_approval = parsed.get("mapped_action") in ("approve", "decline")
-        if is_reaction and parsed.get("run_id") and is_approval:
-            run_id = parsed["run_id"]
-            action = parsed["mapped_action"]
-            outcome = self.decide(
-                run_id,
-                action=action,
-                user_identity=f"slack_reaction_{parsed.get('reaction')}",
-                reason=f"Slack reaction :{parsed.get('reaction')}: recorded",
-            )
-            yield BotEvent(
-                event_type="decision_recorded",
-                run_id=run_id,
-                session_id=session_id,
-                message=f"Recorded decision {action!r} via Slack reaction :{parsed.get('reaction')}:",
-                payload={"action": action, "outcome": outcome.action},
-            )
-            return
-
-        task = parsed.get("task", "")
-        if not task:
-            raise ValueError(f"No actionable task could be parsed from trigger {trigger_key!r} payload: {payload!r}")
-
-        user_identity = str(parsed.get("user_id", f"{trigger_key}_trigger"))
-        yield from self.run_stream(
-            task,
-            user_identity=user_identity,
-            session_id=session_id,
-            auto_approve=auto_approve,
-        )
+    async def __aexit__(self, *args: Any) -> None:
+        await self.aclose()
 
     def run_stream(
         self,
