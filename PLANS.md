@@ -458,7 +458,7 @@ OpenAI-compatible endpoints (Databricks key or custom API key).
   3. Explicit `runtime_kind` field on `RunRecord` (`Literal["offline_demo", "live_openai"]`):
      stored explicitly, never inferred from ID prefixes; `engine.advance` enforces runtime affinity
      on resume, rejecting mismatches.
-  4. Researcher web access: client-side `web_search` canonical tool in `tools.py` using `httpx` with
+  4. web_fetch: client-side `web_fetch` canonical tool in `tools.py` using `httpx` with
      `allowed_domains`, `max_uses`, cost accounting in `search_cost_tokens`, and rejection of binary
      or encrypted content.
   5. Retired non-deployable `automations.py` and `test_automations.py`.
@@ -477,6 +477,6 @@ OpenAI-compatible endpoints (Databricks key or custom API key).
   - `+7` tests: Added `tests/test_lifecycle.py` enforcing D43 runtime invariants (backend `aclose()`, lock release, runtime_kind affinity, event loop ownership).
   - `+4` tests: Added `web_search` domain constraint, binary rejection, and toolkit dispatch tests in `tests/test_tools.py`.
   - `+2` tests: Added `bot.decide()` cancel lifecycle and cross-session baseline retrieval tests in `tests/test_bot.py`.
-  - **Net total: 295 - 33 + 7 + 4 + 2 = 308 tests**, all passing clean.
+  - **Net total: 328 - 33 + 13 = 308 tests**, all passing clean. (D42 peak of 328, minus 33 automation tests retired in D43, plus 13 replacement tests for lifecycle, web_search, and bot decision.)
 
 
