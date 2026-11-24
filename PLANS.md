@@ -61,6 +61,7 @@ Phases:
 - Decision: backend protocols live in contracts.py; roles import only models/contracts/tools; fakes in tests. Rationale: H4/H14 gap fixes; role-independence boundary rule. Date/Author: 2026-11-17 / gap round 16.
 - Decision: old harness-era tree at d:\breakdown remains untouched; spec_search and legacy modules are retired from this product by omission, not migration. Rationale: clean baseline; external scaffold is reference only. Date/Author: 2026-11-17.
 - Decision (D11–D22, approved with the Phase 2 plan 2026-11-18): rfc8785>=0.1.4 runtime dep for JCS canonicalization; SQLite for artifact/event/run stores (corrects the earlier JSONL sketch after reference inspection); state in `<target_repo>/.breakdown/`; non-git checkpoint fallback supported; sandbox = copy of checkpoint-listed files (VCS excluded); source_checkpoint_hash over the seed's full identity tuple; definition_digest = sha256(canonical_json(parsed definition)); loop exhaustion → completion failed (reason loop_exhausted); single-writer lockfile guard; engine task split T7a/T7b; Phase 2 stays offline; timeouts enforced on access (no daemon).
+- Decision (Agent middleware, 2026-11-24): adopt a shared Input → Wrap → Output middleware pipeline around the Agent model-invocation and tool-execution interception points. Agent instances may register middleware; each Agent continues to define its own domain request/output contract in its own `agent.py`. Shared middleware stage contexts, results, tokens, and dispatch belong in `breakdown/agent/middleware.py`, not a new Agent `contracts.py` or `shared/base.py`. Runtime retains workflow transitions, user approvals, execution budgets, and immutable tool authorization. This records the design direction only; implementation requires a separate source-rechecked plan and approval.
 
 ## Context and Orientation
 
@@ -763,3 +764,99 @@ The test count is calculated from the immutable test IDs and current `passes` va
 - A new requirement or incorrect test specification is discovered: preserve the approved manifest and request a separately reviewed revision.
 - Working tree contains unrelated user changes: stage only explicitly owned paths and preserve the unrelated changes.
 - All feature tests are green but independent verification or Auditor review is missing: feature remains incomplete.
+
+
+## Agent Middleware Architecture Decision (2026-11-24)
+
+**Status:** Accepted architectural direction for future design. This is a decision record, not implementation authorization.
+
+### Purpose
+
+Give each Agent extensible interception points around its internal model calls and tool executions without duplicating Agent execution loops or transferring workflow authority from System Runtime.
+
+### Terminology and boundary
+
+A **workflow stage** is one of the eight stages declared in `breakdown.yaml` (for example, `research_proposal`, `research_approval`, and `research_execution`). An **Agent middleware stage** is an internal interception point inside one Agent invocation. These are different concepts and must not be conflated or represented as additional workflow stages.
+
+An Agent middleware stage has a typed context (the data entering that operation) and a typed result (the data returned from it). Middleware handlers execute in three fixed phases, independent of the order in which different phases are registered:
+
+1. **Input** — transforms the stage context before the operation runs.
+2. **Wrap** — surrounds the operation and receives the context plus a `next` callable. Calling `next` zero times short-circuits the operation; once runs it normally; more than once repeats it and therefore requires explicit retry/replay policy.
+3. **Output** — transforms or inspects the typed stage result after the operation.
+
+The phase order is always Input → Wrap → operation → Output. Within a phase, registration order determines handler nesting; the first registered Wrap handler is outermost.
+
+### Initial interception points
+
+Start with two actual execution boundaries:
+
+- **`InvokeModelStage`:** around one provider/model invocation. Its context can carry the prepared model input and call-scoped metadata; its result represents that model invocation's typed response.
+- **`ExecuteToolStage`:** around one requested tool execution. Its context carries the normalized tool request and Host-bound dispatch context; its result represents the tool execution result.
+
+Do not create arbitrary/custom middleware stages by default. Add another interception point only when a real shared execution boundary needs it.
+
+### API and placement
+
+The shared middleware machinery belongs at `breakdown/agent/middleware.py`: stage tokens, phase/context/result types, handler typing, registration, and deterministic dispatch.
+
+The shared Agent execution entry point exposes instance-scoped registration, conceptually:
+
+```python
+agent = ResearcherAgent(config=config)
+agent.add_middleware(InvokeModelStage.Input, be_concise)
+result = await agent.run(approved_research_input)
+```
+
+This is an API direction, not an existing implementation signature. Middleware registration is scoped to the Agent instance unless a separately justified requirement establishes another scope.
+
+Agent-specific contracts remain owned by each Agent and are defined in its own `agent.py`. Do not add `breakdown/agent/contracts.py` or `breakdown/agent/shared/base.py`. The shared context/result types in `middleware.py` describe interception mechanics; they do not define Researcher, Auditor, Planner, Builder, or Verifier domain contracts.
+
+The existing `breakdown/contracts.py` is a current workflow-contract module. This decision does not remove, rename, or repurpose it.
+
+### Authority and execution constraints
+
+- System Runtime continues to own the eight-stage workflow, stage progression, user approval gates, durable state, execution budgets, and completion.
+- Middleware cannot approve a research proposal or implementation plan, advance workflow state, persist authoritative artifacts, synchronize repository changes, or grant capabilities.
+- The Host constructs and injects the ToolGateway. Middleware cannot replace or override the Host-bound caller identity, Agent identity, allowlist, repository root, memory root, credentials, or other authority-bearing context.
+- Input middleware may transform call-scoped model input, but must not silently remove mandatory Agent instructions, provenance requirements, or evidence constraints.
+- Output middleware cannot bypass Agent-specific schema validation or Runtime evidence validation.
+- Wrap retries must be bounded. Repeating a model call may incur cost; repeating a tool call may repeat an external side effect. Tool-stage repetition therefore requires explicit idempotency/replay semantics and must not be enabled by generic middleware behavior.
+- Errors and cancellation must remain observable. Middleware must not turn an exception, missing result, or uncertain execution into a valid result.
+
+### Relationship to Agent context
+
+Temporary conversation context belongs to the Agent invocation. Any future context-management capability (including token-pressure reporting, summarization, truncation, and pinning) belongs under `breakdown/agent/capabilities/` and may use middleware where appropriate.
+
+That capability must not own cross-run MemoryStore persistence, workflow state, approvals, source-checkpoint identity, or authoritative repository evidence. Durable memory remains System Storage-owned. Context summaries are working context, not substitutes for source evidence or artifact references.
+
+### Relationship to the current implementation
+
+At the inspected baseline, `OpenAICompatibleRoleBackend.generate()` combines the bounded model/tool-call loop and direct canonical-tool dispatch. This does not yet provide independent model-invocation and tool-execution interception points.
+
+Implementation must first establish one shared bounded Agent execution loop, separate provider request/response transport from loop orchestration, and route tool execution through the Host-created ToolGateway. Middleware must wrap those real boundaries; callbacks around the existing aggregate `generate()` method would not provide the intended semantics.
+
+The current CLI remains the single application entry point at `breakdown/__main__.py`. Workflow approval and resume remain Runtime operations; they are not implemented as Agent `start()`, `send()`, `end()`, or `resume()` methods.
+
+### Required behavioral validation before implementation is accepted
+
+- Input handlers run before Wrap and transform only the supplied stage context.
+- Wrap handlers receive the correct context and `next`; tests cover zero, one, and multiple calls with bounded retry behavior.
+- Output handlers receive and return the stage's declared result type.
+- Phase order is fixed regardless of cross-phase registration order; handler nesting within each phase is deterministic.
+- Middleware registered on one Agent instance does not leak into another Agent instance.
+- Model-call middleware and tool-execution middleware intercept their respective individual operations, not merely the outer Agent invocation.
+- Tool authorization is rechecked by the Host at dispatch; middleware and model output cannot alter the immutable caller identity or data roots.
+- Repeated tool execution cannot duplicate non-idempotent effects without an explicit replay/idempotency policy.
+- Middleware cannot bypass Agent schema validation, user approvals, Runtime budgets, sandbox containment, persistence ownership, or synchronization authorization.
+- Cancellation, exceptions, short-circuits, and retry exhaustion are represented truthfully and leave sufficient evidence for Runtime handling.
+
+### Non-goals
+
+This decision does not add dependencies, adopt Strands internals as a dependency, implement a persistent conversational session API, change `breakdown.yaml`, change the eight workflow stages, rename current source modules, or authorize the planned Agent/System package migration. The Strands middleware design is a reference pattern; Breakdown owns its own small compatible contract and implementation.
+
+### References
+
+- [Strands middleware API and phase semantics](https://github.com/strands-agents/harness-sdk/blob/main/strands-py/src/strands/agent/agent.py)
+- [Strands middleware stage/context types](https://github.com/strands-agents/harness-sdk/blob/main/strands-py/src/strands/middleware/stages.py)
+- [Current Breakdown bounded model/tool loop](https://github.com/itz1508/Breakdown/blob/763f763b3ed3f45019d342eb9b1a901ae44b38b7/breakdown/live_backend.py)
+- [Current Breakdown workflow definition](https://github.com/itz1508/Breakdown/blob/763f763b3ed3f45019d342eb9b1a901ae44b38b7/breakdown.yaml)
