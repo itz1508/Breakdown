@@ -478,5 +478,167 @@ OpenAI-compatible endpoints (Databricks key or custom API key).
   - `+4` tests: Added `web_search` domain constraint, binary rejection, and toolkit dispatch tests in `tests/test_tools.py`.
   - `+2` tests: Added `bot.decide()` cancel lifecycle and cross-session baseline retrieval tests in `tests/test_bot.py`.
   - **Net total: 328 - 33 + 13 = 308 tests**, all passing clean. (D42 peak of 328, minus 33 automation tests retired in D43, plus 13 replacement tests for lifecycle, web_search, and bot decision.)
+## Proposed direction — feature-driven, resumable project execution (2026-11-23)
 
+**Status: design direction recorded; not implemented.** This proposal captures the feature-oriented workflow discussed on 2026-11-23. It does not silently change the current `breakdown.yaml` definition, the eight-stage runtime, or existing persisted records. Implementation requires a separate, reviewed workflow/schema change.
 
+### Purpose
+
+A project-level request should first become a structured, reviewable feature backlog. Breakdown should then work on **one coherent feature at a time**, completing that feature's research, approved plan, implementation, testing, independent verification, and audit before selecting another feature. A session may complete only one feature; unfinished work must remain recoverable rather than being reported as complete or regenerated from the original request.
+
+This is a sequential feature lifecycle, not a deferred scheduler, dependency-wave engine, or parallel build queue.
+
+### Proposed flow
+
+```text
+USER INPUT
+    |
+    v
+HOST-MANAGED CONTEXT GENERATION
+    |
+    v
+FEATURE SCAFFOLDING
+    |  - understand objective, target repository and constraints
+    |  - decompose into coherent, independently verifiable features
+    |  - establish dependencies, acceptance criteria and test intent
+    v
+feature_list.json (versioned proposal)
+    |
+    v
+USER REVIEW / APPROVAL OF BACKLOG REVISION
+    |
+    v
+SELECT ONE ELIGIBLE FEATURE
+    |
+    v
+RESEARCHER — research the selected feature
+    |
+    v
+AUDITOR — review research evidence and unresolved questions
+    |
+    v
+PLANNER — implementation plan and any justified refactor proposal
+    |
+    v
+USER REVIEW / APPROVAL OF EXACT FEATURE PLAN
+    |
+    v
+BUILDER — implement the feature and run its tests
+    |  - frontend/backend implementation as applicable
+    |  - browser automation for browser-visible behavior
+    |  - fix defects within the approved scope
+    |  - capture execution and test evidence
+    v
+HOST-INVOKED INDEPENDENT VERIFICATION
+    |
+    v
+AUDITOR — inspect resulting source, behavior and evidence
+    |
+    +---- Findings do not require a change
+    |          |
+    |          v
+    |     RETAIN FEATURE EVIDENCE
+    |
+    +---- Correction / refactor is justified
+               |
+               v
+          PLANNER — bounded correction/refactor proposal
+               |
+               v
+          USER APPROVAL when plan, paths, scope or source binding changes
+               |
+               v
+          BUILDER — implement approved correction
+               |
+               v
+          INDEPENDENT RE-VERIFICATION
+               |
+               v
+          AUDITOR RE-REVIEW
+    |
+    v
+HOST RECORDS FEATURE COMPLETION AND EVIDENCE REFERENCES
+    |
+    v
+SELECT NEXT ELIGIBLE FEATURE
+```
+
+The feature backlog approval and an individual implementation-plan approval are distinct decisions. Approval must bind the exact manifest/feature revision, plan revision, source checkpoint, authorized paths/actions, and verification criteria relevant to that decision. A changed scope or stale source binding must return to review; an agent's message is never approval.
+
+### Feature manifest responsibilities
+
+`feature_list.json` is the project-level feature manifest, not a second workflow definition and not a transcript of every runtime event. Its proposed contents are:
+
+- Project identity, objective, target-repository identity, manifest schema version, and manifest revision.
+- Stable feature IDs, names, descriptions, priorities, and dependency IDs.
+- Feature requirements, research questions, acceptance criteria, implementation boundaries, and test intent.
+- Browser scenarios where applicable, backend/API checks, and end-to-end verification expectations.
+- Required capability descriptions for tool discovery; these are requests, not grants of execution authority.
+- A coarse feature lifecycle status, the active feature ID, and references to the approved plan, run, findings, test results, and verification evidence.
+
+Reports, source diffs, test output, approvals, and event history remain separate durable artifacts. The manifest references those artifacts rather than embedding large reports or duplicating the runtime journal.
+
+**Ownership and source-of-truth rule:** the Host is the only component that changes the authoritative manifest revision or feature lifecycle status. Agents return proposed feature data, findings, plans, and results; they do not directly rewrite the manifest or runtime stores. The existing ArtifactStore/revision mechanisms should be reused where suitable rather than introducing a second persistence owner. The user-facing `feature_list.json` serialization and its eventual location must have one canonical owner; do not maintain competing editable copies.
+
+The three records remain distinct:
+
+| Record | Authority |
+|---|---|
+| `breakdown.yaml` | Executable workflow definition: stages, contracts, transitions, gates, and deterministic operations |
+| `feature_list.json` | Project backlog: feature decomposition, dependencies, acceptance intent, status, and artifact references |
+| `.breakdown/` runtime state | Run state, events, approvals, checkpoints, locks, artifacts, and recovery information |
+
+### Responsibility boundaries
+
+- **Context generation and feature scaffolding:** Host-managed intake. It may use model assistance, but the Host validates and persists the proposed manifest. This is not a new autonomous agent or a source of execution authority.
+- **Researcher:** Researches the currently selected feature and returns source-grounded findings, constraints, and unanswered questions.
+- **Auditor:** Performs read-only review of research, repository state, implementation changes, and verification evidence. It reports defects and architectural concerns with evidence; it does not edit source or authorize a refactor.
+- **Planner:** Owns implementation design and bounded correction/refactor proposals. It cannot freeze, approve, or execute its own plan.
+- **Builder:** Implements only the approved feature/plan scope, including frontend/backend work and builder-level browser/manual tests. Builder test reports are evidence, not independent authorization.
+- **Verifier:** Host-invoked independent verification against the approved acceptance criteria. It is not a fifth autonomous workflow agent and cannot advance the workflow.
+- **Coder:** Remains a bounded read-only capability under Auditor, not a peer agent.
+- **Analyzer:** Do not add a separate autonomous Analyzer agent. Architectural analysis is part of Auditor's findings; Planner turns justified findings into a proposed design.
+
+### Tool Discovery Service boundary
+
+The separate Tool Discovery Service is a capability resolver used by the workflow. Given structured feature context and the current operation, it can return relevant registered tool definitions, schemas, versions, and availability information. It does not generate the feature backlog, invent executable tools, execute tools, approve plans, or advance stages.
+
+Discovery results are candidates only. The Host must still enforce caller identity, stage/operation allowlists, tool provenance, authorization, and execution-time checks. The service remains independently deployable and must not become a second workflow authority or a Breakdown-specific dependency in its core.
+
+### Session continuity and completion invariants
+
+1. At most one feature is active for a project by default. Select the next feature only after its dependencies are completed and the current feature reaches the defined completion boundary.
+2. A feature is a coherent vertical increment. Its frontend, backend, tests, and integration work should normally remain together when they contribute to the same user-visible capability; do not turn each layer into a separate feature merely to create more backlog entries.
+3. Do not start the next feature because the current session is ending. Complete the current feature where possible; otherwise persist its exact state and resume it in the next session.
+4. Resume from the existing manifest revision, active feature, run ID, approved plan binding, source checkpoint, completed research, execution attempts, test/verification evidence, Auditor findings, and unresolved questions. Do not regenerate completed work from the original user request.
+5. Feature completion requires accepted criteria to be accounted for, independent verification evidence, Auditor review disposition, reconciled attempts, and retained artifact references. Builder self-report alone cannot complete a feature.
+6. A refactor is not automatic. Auditor findings justify Planner analysis; a plan/scope/source change follows the applicable approval boundary before Builder acts.
+7. If work is blocked or interrupted, retain that state and its evidence. Do not convert missing checks or uncertainty into completion.
+
+### Design validation required before implementation
+
+The feature scaffolder and lifecycle should be evaluated against at least these cases:
+
+- A small single-feature request and a large multi-feature application request.
+- Features with explicit dependencies and features that can be independently selected.
+- A cross-cutting prerequisite (for example, authentication) used by later features.
+- An ambiguous request where the correct action is to preserve uncertainty and ask for review, not invent requirements.
+- A feature spanning UI, API/backend, persistence, and browser tests.
+- Duplicate or overlapping features, circular dependencies, an overly broad feature, and a feature too small to merit its own lifecycle.
+- Research that changes acceptance criteria or reveals a new dependency.
+- Builder changes outside approved paths, tests that do not exercise the acceptance criteria, and browser automation that cannot run.
+- Auditor findings requiring no change, a bounded in-scope correction, or a scope-changing refactor requiring renewed approval.
+- Session interruption during research, implementation, verification, or audit, followed by resume without losing evidence or repeating completed operations.
+- A stale manifest/plan revision or changed source checkpoint at approval or execution time.
+
+Acceptance is behavioral: the tests must demonstrate that one feature can be taken from an approved proposal through implementation, independent verification, audit disposition, durable retention, and later-session resume, while the next feature remains untouched until the current one is complete.
+
+### Decisions still open
+
+- The canonical on-disk location and edit/export policy for `feature_list.json`.
+- Whether context generation and feature scaffolding extend the current Auditor `research_proposal` operation or require a separately declared intake operation in a future workflow revision.
+- The exact lifecycle status vocabulary and which transitions are deterministic Host operations.
+- How to represent shared foundations and cross-cutting requirements without splitting a coherent feature or duplicating ownership.
+- Which browser automation and other test capabilities are registered, actually executable, and authorized in each environment.
+
+**Next step:** design the manifest schema and transition/approval bindings, then create good/bad lifecycle evaluations. Do not begin implementation by adding a new agent, copying Tool Discovery into Breakdown, or changing the existing workflow definition without a separately reviewed plan.
