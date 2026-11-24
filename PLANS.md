@@ -61,7 +61,6 @@ Phases:
 - Decision: backend protocols live in contracts.py; roles import only models/contracts/tools; fakes in tests. Rationale: H4/H14 gap fixes; role-independence boundary rule. Date/Author: 2026-11-17 / gap round 16.
 - Decision: old harness-era tree at d:\breakdown remains untouched; spec_search and legacy modules are retired from this product by omission, not migration. Rationale: clean baseline; external scaffold is reference only. Date/Author: 2026-11-17.
 - Decision (D11–D22, approved with the Phase 2 plan 2026-11-18): rfc8785>=0.1.4 runtime dep for JCS canonicalization; SQLite for artifact/event/run stores (corrects the earlier JSONL sketch after reference inspection); state in `<target_repo>/.breakdown/`; non-git checkpoint fallback supported; sandbox = copy of checkpoint-listed files (VCS excluded); source_checkpoint_hash over the seed's full identity tuple; definition_digest = sha256(canonical_json(parsed definition)); loop exhaustion → completion failed (reason loop_exhausted); single-writer lockfile guard; engine task split T7a/T7b; Phase 2 stays offline; timeouts enforced on access (no daemon).
-- Decision (Agent middleware, 2026-11-24): adopt a shared Input → Wrap → Output middleware pipeline around the Agent model-invocation and tool-execution interception points. Agent instances may register middleware; each Agent continues to define its own domain request/output contract in its own `agent.py`. Shared middleware stage contexts, results, tokens, and dispatch belong in `breakdown/agent/middleware.py`, not a new Agent `contracts.py` or `shared/base.py`. Runtime retains workflow transitions, user approvals, execution budgets, and immutable tool authorization. This records the design direction only; implementation requires a separate source-rechecked plan and approval.
 - Review (2026-11-24): Anthropic SDK tooling comparison and the current Breakdown gap analysis are recorded in [docs/anthropic-sdk-tools-gap-review.md](docs/anthropic-sdk-tools-gap-review.md). Baselines: Breakdown `main` at `95505019772544329fa9f9ab3d9148d232cf7b56`; Anthropic Python SDK 2.13.0 at `bda18c620dbec4c7febed947d7b8367d84c9171d`. This is a source review only. It authorizes no runtime changes or additional registry; implementation requires a source-rechecked plan and approval.
 
 ## Context and Orientation
@@ -118,8 +117,8 @@ remain intact; fix forward, never edit tests to force success.
 - `breakdown.engine`: load_workflow, forward-edge (graphlib) and loop-back
   validation, resolve_next.
 - `breakdown.tools`: capability_inspect, source_search, source_read.
-- `breakdown.roles`: Auditor (2 ops + coder sub-role), Researcher, Coder,
-  Planner, Builder — async typed operations, injected backends/tools.
+- Agent roles: Researcher, Auditor, Coder, Planner, and Builder — independently
+  constructible roles with typed operation contracts and injected capabilities.
 
 ## Outcomes & Retrospective
 
@@ -598,7 +597,7 @@ The three records remain distinct:
 - **Planner:** Owns implementation design and bounded correction/refactor proposals. It cannot freeze, approve, or execute its own plan.
 - **Builder:** Implements only the approved feature/plan scope, including frontend/backend work and builder-level browser/manual tests. Builder test reports are evidence, not independent authorization.
 - **Verifier:** Host-invoked independent verification against the approved acceptance criteria. It is not a fifth autonomous workflow agent and cannot advance the workflow.
-- **Coder:** Remains a bounded read-only capability under Auditor, not a peer agent.
+- **Coder:** An independent role with its own agent module, domain contract, skill, and tests. It is independently constructible and dispatchable; Runtime still owns activation, permissions, workflow progression, and persistence.
 - **Analyzer:** Do not add a separate autonomous Analyzer agent. Architectural analysis is part of Auditor's findings; Planner turns justified findings into a proposed design.
 
 ### Tool Discovery Service boundary
@@ -765,3 +764,85 @@ The test count is calculated from the immutable test IDs and current `passes` va
 - A new requirement or incorrect test specification is discovered: preserve the approved manifest and request a separately reviewed revision.
 - Working tree contains unrelated user changes: stage only explicitly owned paths and preserve the unrelated changes.
 - All feature tests are green but independent verification or Auditor review is missing: feature remains incomplete.
+
+## Current target architecture — independent agent roles (2026-11-24)
+
+**Status:** Architecture direction recorded for future implementation. This is a target structure, not a claim that the current repository has already been reorganized. It supersedes earlier conflicting role-ownership and middleware proposals in this document. Re-check the live repository before implementation; do not treat historical progress entries as current source state.
+
+```text
+breakdown/
+├── __init__.py
+├── __main__.py                   # only entry point; builds the agents dict
+├── tests/                        # layering, cross-agent contracts, workflow-level
+├── shared/
+│   ├── __init__.py
+│   ├── base.py
+│   ├── config.py
+│   ├── models.py
+│   └── tests/
+├── agents/
+│   ├── __init__.py               # explicit imports
+│   ├── loop.py                   # shared model loop
+│   ├── prompt.py
+│   ├── researcher/
+│   │   ├── __init__.py
+│   │   ├── agent.py
+│   │   ├── SKILL.md
+│   │   └── tests/
+│   ├── auditor/
+│   │   ├── __init__.py
+│   │   ├── agent.py
+│   │   ├── SKILL.md
+│   │   └── tests/
+│   ├── coder/
+│   │   ├── __init__.py
+│   │   ├── agent.py
+│   │   ├── SKILL.md
+│   │   └── tests/
+│   ├── planner/
+│   │   ├── __init__.py
+│   │   ├── agent.py
+│   │   ├── SKILL.md
+│   │   └── tests/
+│   └── builder/
+│       ├── __init__.py
+│       ├── agent.py
+│       ├── SKILL.md
+│       └── tests/                # Builder does not use the shared model loop
+└── system/
+    ├── runtime/
+    │   ├── __init__.py
+    │   └── sandbox.py
+    ├── storage/
+    ├── tools/
+    ├── memory.py
+    ├── safety.py
+    └── tests/
+```
+
+### Role and package boundaries
+
+- **Five independent roles:** Researcher, Auditor, Coder, Planner, and Builder. Each owns its behavior, typed domain contract, skill guidance, and focused tests. Coder is not nested under Auditor and is not an Auditor-owned sub-role.
+- **Composition root:** `breakdown/__main__.py` is the only application entry point and constructs the explicit agents dictionary. Construction must be callable and dependency-injected; importing modules must not instantiate agents, read credentials, or perform external work.
+- **Shared package:** `shared/` contains only cross-role contracts, configuration types, and shared artifact models. `shared/base.py` defines minimal protocols/base contracts; it must not become a universal Agent superclass or introduce an inheritance framework.
+- **Shared model loop:** `agents/loop.py` provides the common model/tool loop for roles that use it. Agent-specific behavior and request/result contracts remain in each role's `agent.py`. Builder does not use this shared model loop.
+- **Builder capability:** Builder still receives its required coding/execution capability through dependency injection. Absence of the shared model loop does not mean Builder has no backend or execution interface.
+- **Runtime authority:** `system/runtime/` owns workflow coordination, role activation, approvals, authorization, sandbox lifecycle, and transitions. Independent roles do not gain workflow authority by being independently constructible.
+- **Storage and memory:** `system/storage/` owns durable persistence. `system/memory.py` exposes memory behavior while persistence remains Storage-owned; do not create a competing persistence owner.
+- **Tools and safety:** `system/tools/` owns canonical tool registration/dispatch and associated authorization integration. `system/safety.py` owns safety boundaries such as path containment and synchronization safeguards.
+- **Verification:** Independent verification remains a System/Runtime-controlled operation; this target does not add a sixth autonomous Verifier role.
+- **No unapproved provider layer:** Do not add a `providers/` package or a new provider abstraction as part of this restructuring. Retain and inject existing backend capabilities unless source inspection and a separately approved design demonstrate a concrete need.
+- **No premature middleware framework:** The previously recorded shared Input → Wrap → Output middleware proposal is withdrawn. Do not implement it or add a middleware package based on that superseded entry.
+
+### Dependency direction
+
+- Agents consume shared contracts and injected capabilities; they do not import sibling agents or own Runtime/Storage.
+- Runtime composes and invokes roles through explicit contracts; it owns lifecycle and policy decisions.
+- Storage does not import agents.
+- Shared modules do not import upward into agents or system.
+- Keep internal Runtime/Storage models in their owning components; only genuinely cross-boundary contracts and artifact schemas belong in `shared/`.
+
+### Implementation guardrails
+
+This structure is a design target only. Before moving modules, inspect the current `main` source and map each existing model, protocol, backend, role, and test to its new owner. Migrate incrementally, preserve public behavior, and add import-layering and cross-role contract tests. Do not delete legacy modules until all imports, tests, and entry-point wiring have moved and been verified. No implementation, test result, or runtime behavior is implied by this record.
+
