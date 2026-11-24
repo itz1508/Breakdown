@@ -642,3 +642,124 @@ Acceptance is behavioral: the tests must demonstrate that one feature can be tak
 - Which browser automation and other test capabilities are registered, actually executable, and authorized in each environment.
 
 **Next step:** design the manifest schema and transition/approval bindings, then create good/bad lifecycle evaluations. Do not begin implementation by adding a new agent, copying Tool Discovery into Breakdown, or changing the existing workflow definition without a separately reviewed plan.
+
+
+### Long-running feature implementation protocol (sample-derived)
+
+This protocol makes the feature-at-a-time rule operational for multi-session application work. It is a proposed implementation discipline; it does not change the current runtime until a separately reviewed contract/schema implementation is accepted.
+
+#### 1. Scaffold and freeze the test specification
+
+The context/feature scaffolder produces a versioned `feature_list.json` containing stable feature IDs and stable test IDs. Each test contains its original description, ordered steps, expected visible outcomes, and an initial `"passes": false`. UI tests must describe the real user journey, not merely an API call or internal function invocation.
+
+After the user approves a manifest revision, treat the feature and test definitions as immutable:
+
+- The only field an implementation/verification cycle may update in `feature_list.json` is a test's `passes` boolean.
+- Do not remove tests, rewrite descriptions, change steps or expected outcomes, merge/split tests, reorder tests, or silently regenerate the manifest.
+- A missing, ambiguous, contradictory, or technically impossible test is recorded as a finding. Resolving it requires a separately reviewed manifest revision; it is not permission to edit the approved test in place.
+- Keep the manifest revision and a digest of its immutable test specification bound to the approval. The Host verifies that a proposed update changes only `passes` for existing test IDs.
+- The Host is the authoritative writer of the manifest. Agents return verification outcomes and evidence references; they do not directly edit project state.
+
+This is intentionally stricter than treating `feature_list.json` as a general progress document. It is an approved test specification with narrowly mutable verification bits.
+
+#### 2. Work one feature, end to end
+
+Select one eligible feature whose dependencies are complete. Research it, resolve constraints, define/approve its implementation plan, then implement the complete vertical slice. Include frontend, backend, persistence and integration changes where the feature needs them. Do not split a user-visible feature into disconnected frontend/backend tasks merely to increase the feature count.
+
+The Builder may test and fix its own work, but its report is not independent verification. Do not begin a second feature while the current one has unverified tests, unresolved blocking findings, or incomplete required evidence.
+
+#### 3. Mandatory real-browser verification for UI features
+
+For every feature with user-visible behavior, acceptance requires exercising the actual deployed/local application UI in a real browser using an authorized browser-automation tool. The test must behave like a user:
+
+- Navigate to the application and the relevant page through the browser.
+- Click visible controls; type using keyboard input; submit forms; scroll; navigate; and use the application as a person would.
+- Exercise the complete user workflow from its entry point through the expected outcome, including relevant error, empty, loading, success, and recovery states specified by the test.
+- Capture screenshots at each meaningful test step, including the resulting state after important interactions. Save them under a stable path such as `verification/<feature-id>/<test-id>/step-<nn>.png`.
+- Inspect each screenshot against the approved design/specification and expected visual state. A screenshot merely existing is not visual verification.
+- Observe browser console output during the workflow. Any console error blocks the test until investigated and resolved or explicitly dispositioned under an approved exception; do not silently filter errors.
+- Record the browser, viewport, application revision/source checkpoint, test ID, step, timestamp, and screenshot artifact references in the verification record.
+
+Do not use `curl`, direct HTTP requests, database inspection, internal function calls, or JavaScript evaluation as a substitute for user interaction. Do not use `page.evaluate`, injected scripts, direct DOM mutation, or app-state manipulation to bypass the interface. Browser automation may use normal locator/accessibility interactions, keyboard, mouse, navigation, scrolling, screenshots, and supported browser console/log APIs. API/unit/integration tests remain useful supplemental checks, never the sole acceptance evidence for UI behavior.
+
+If a feature genuinely has no user-visible interface, do not fabricate one or mark a UI test as passing. Record the mismatch as blocked/not applicable and obtain an explicit test-spec decision through a new approved manifest revision before changing the test contract.
+
+#### 4. Verification evidence and the `passes` update
+
+A test can change from `"passes": false` to `"passes": true` only after all of the following are present:
+
+1. Every prescribed step was executed against the intended application revision.
+2. The expected functional result was observed through the real UI.
+3. Required screenshots were captured and visually inspected.
+4. Browser console errors were inspected; no unresolved errors remain.
+5. The full user workflow completed, not just an isolated control or endpoint.
+6. Any defects found during the run were fixed and the affected workflow was rerun.
+7. Independent verification accepts the evidence; Builder self-report alone cannot flip the field.
+
+Keep the evidence itself outside `feature_list.json` (for example in the existing Host-managed artifact store and a human-readable `verification/` export). Use stable feature/test IDs so each screenshot, browser trace, console record, source checkpoint, and verifier result can be correlated without adding fields to the frozen manifest. The Host performs a narrow update to the single `passes` field and records the before/after manifest digest and supporting artifact references in its durable event/artifact history.
+
+A code change can invalidate a previously verified test. The Host must mark affected `passes` values false (the only permitted field mutation) when their verification is no longer valid, then require the same unchanged test steps to be rerun before setting them true again. Never leave a stale true value merely to preserve a completion count.
+
+#### 5. Fix regressions before expanding scope
+
+Run the relevant existing test suite before and after feature changes. Triage pre-existing failures separately from regressions. A regression blocks completion of the current feature and takes priority over starting new feature work. Do not edit, delete, weaken, skip, or reorder tests to obtain a green result. A test that cannot be executed remains not passing; missing infrastructure is not a pass.
+
+The quality target is correctness and verified user experience, not maximizing the number of green booleans. A zero-console-error target applies to the tested workflow; performance and responsive behavior must also be checked against explicit acceptance criteria rather than vague claims such as "fast" or "polished."
+
+#### 6. Commit a verified feature as a coherent checkpoint
+
+After the feature's required tests have been independently verified:
+
+- Stage only the intended implementation files, verification artifacts, and the approved `passes` changes. Do not use an indiscriminate `git add .`; inspect the working tree and staged diff to avoid including unrelated user changes, secrets, temporary files, or generated artifacts.
+- Commit with a feature-specific message that identifies the implementation and its evidence. The commit should identify the feature, tests exercised, browser verification, and manifest pass-bit updates.
+- Retain the commit SHA, source checkpoint, verification report, screenshot references, and manifest revision in the run record.
+- Update the existing living `PLANS.md` milestone/retrospective when the implementation plan or durable project direction changes. Runtime session progress, resumable state, and event history belong to the existing Host-managed `.breakdown/` stores.
+
+Do not create parallel `work-progress.txt` and `claude-progress.txt` files as competing progress authorities. If a future human-readable handoff projection is needed, derive it from the canonical run/feature records or designate exactly one generated projection with a clear owner.
+
+#### 7. End the session without losing state
+
+Prefer ending a session immediately after one feature reaches its verified completion boundary. Before stopping, ensure:
+
+- The active feature ID, manifest revision, plan/approval bindings, source checkpoint, commit SHA, and current test counts are durable.
+- Every completed test has its screenshot and verification evidence retained, and only those test `passes` values are true.
+- Incomplete or blocked tests remain false with a specific reason and next action recorded outside the manifest.
+- Defects, unresolved risks, and the next eligible feature are recorded in the run handoff.
+- The application is left in its last known usable state; do not hide an unfinished or broken state behind a passing flag.
+
+If interrupted before feature completion, persist an explicit resumable checkpoint and keep incomplete tests false. Do not start the next feature. A checkpoint commit may be used when repository policy requires committed session progress, but it must be clearly identified as incomplete and must not imply feature completion. Never discard unrelated or pre-existing working-tree changes to manufacture a clean state.
+
+#### 8. Per-feature acceptance record
+
+The Host should be able to produce a compact record equivalent to:
+
+```text
+Feature: FEAT-###
+Manifest revision: <revision>
+Approved plan: <artifact-ref + digest>
+Source checkpoint: <commit/checkpoint>
+Tests: <verified>/<total>
+Browser: <browser + version>
+Viewport(s): <tested viewport(s)>
+Screenshots: verification/<feature-id>/<test-id>/
+Console: <observed errors and disposition>
+Independent verifier: <result + evidence ref>
+Auditor review: <findings + disposition>
+Commit: <commit SHA>
+Next action: <next feature or explicit blocker>
+```
+
+The test count is calculated from the immutable test IDs and current `passes` values; it is never hand-edited. A feature is complete only when every required test is passing on the retained source checkpoint, independent verification and Auditor review are recorded, and no blocking finding remains.
+
+#### Scenarios required to validate this protocol
+
+- Agent attempts to edit a test description, step, order, expected result, or any field other than `passes`: Host rejects the manifest mutation.
+- Agent claims a UI test passed using only `curl`, an API client, or JavaScript evaluation: Host rejects the pass-bit update.
+- Screenshot is missing, captured at the wrong step, or not visually reviewed: test remains not passing.
+- Browser console contains an unresolved error: test remains not passing.
+- One step fails: fix the product, rerun the affected workflow, and retain both failure and corrected-run evidence.
+- A later code change affects an earlier passing test: Host invalidates the affected pass bit and requires re-verification.
+- Session ends mid-feature: resume the same feature from its durable checkpoint; do not select the next feature.
+- A new requirement or incorrect test specification is discovered: preserve the approved manifest and request a separately reviewed revision.
+- Working tree contains unrelated user changes: stage only explicitly owned paths and preserve the unrelated changes.
+- All feature tests are green but independent verification or Auditor review is missing: feature remains incomplete.
