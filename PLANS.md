@@ -917,6 +917,37 @@ The retry policy must not multiply attempts across middleware, provider transpor
 - Cancellation must reach the underlying operation and stop subsequent attempts.
 - Exceptions, cancellation, missing results, short-circuits, and retry exhaustion remain explicit outcomes. Middleware cannot convert uncertain or failed execution into a valid result.
 
+### Session lifecycle and input/output contract
+
+A **workflow conversation session** is the continuous user-facing interaction context. It is created and owned by the Host before or at the beginning of workflow processing. It is not synonymous with an individual Agent invocation, a workflow stage, or a durable run record.
+
+The session provides two explicit I/O directions:
+
+- **Input:** user requests, follow-up messages, clarification responses, and explicit decisions for pending approval gates.
+- **Output:** streamed assistant/Agent progress, structured Agent results, workflow events, approval requests, clarification requests, and completion information.
+
+Runtime owns interpretation and routing. It decides whether incoming content is a new request, an answer, a change request, an approval/decline, or an unrelated conversational message. It validates every workflow decision against the currently pending gate and its immutable artifact/source bindings. Neither the model nor an Agent may manufacture user approval from its own output.
+
+The session is allowed to be idle or waiting. In particular, starting a session does not require immediate Agent execution. Runtime may first collect the request, prepare a proposal, expose it to the User, and suspend at `research_approval`. The session's input/output channel remains the interaction path while that gate is pending. Only after a valid User decision does Runtime activate the approved research processing plan.
+
+The session is the outer conversation boundary; Agent execution is an inner operation. The Host dispatches the appropriate Agent with a typed request and scoped context. The Agent may maintain invocation/conversation context and return streamed events or a typed result, but cannot change the outer session's identity, route itself to a later workflow stage, write authoritative workflow state, or bypass Runtime validation. The same user-facing session can span Auditor, Researcher, Planner, Builder, and Verifier invocations as the workflow advances.
+
+The implementation must keep these operations distinct:
+
+| Operation | Owner | Meaning |
+|---|---|---|
+| Start/open session | Host | Establish conversation identity, I/O channels, and initial context |
+| Send input | Session API → Host | Accept user input; Runtime validates and routes it |
+| Receive output | Host → Session API | Stream messages and structured workflow/Agent events |
+| Dispatch Agent | Runtime | Invoke a specific Agent with typed input and scoped context |
+| Approve/reject/request changes | User, validated by Runtime | Resolve the exact pending approval gate |
+| Pause/wait | Runtime | Preserve session and workflow state while waiting |
+| Close/disconnect I/O | Host/session API | Close the channel without implying workflow completion |
+| Cancel workflow | Runtime | Explicitly cancel an active workflow run |
+| Reconnect/recover | Host + Runtime + Storage | Reopen interaction and restore/revalidate durable workflow state |
+
+The API should not collapse these responsibilities into one generic `start()`, `end()`, or `resume()` action. A method named `start()` may be used for session creation only when its semantics are documented accordingly. Exact method names are not yet fixed; the required behavior and ownership boundaries are.
+
 ### Relationship to workflow approvals
 
 The two existing user approval gates remain exclusively Runtime-owned:
@@ -969,9 +1000,40 @@ No package move, provider SDK adoption, new dependency, or workflow rewrite is a
 
 ### Non-goals
 
-This decision does not add dependencies, adopt Strands internals as a dependency, add arbitrary custom middleware stages, create a second hook registry or canonical tool registry, add Agent-owned durable memory, introduce a persistent conversational session API, change `breakdown.yaml`, change the eight workflow stages, rename current source modules, or authorize the planned Agent/System package migration.
+This decision does not add dependencies, adopt Strands or Claude SDK internals as dependencies, add arbitrary custom middleware stages, create a second hook registry or canonical tool registry, add Agent-owned durable memory, change `breakdown.yaml`, change the eight workflow stages, rename current source modules, or authorize the planned Agent/System package migration.
 
-In particular, workflow `start_run`, approval waiting, `resume_run`, and completion remain Runtime operations. The current workflow does not require Agents to expose conversational `start()`, `send()`, `end()`, or `resume()` methods. An Agent invocation returns its typed result to Runtime; Runtime decides what happens next.
+The public interaction model is session-oriented and supports input/output over the lifetime of a workflow conversation. A session can be opened before any Agent stage is dispatched and can remain open while Runtime waits for a user decision. This is a required part of the architecture, not an optional future feature.
+
+A conceptual API is:
+
+```python
+session = await breakdown.start_session(request=initial_request)
+
+await session.send(user_message)
+
+async for event in session.receive():
+    handle(event)
+
+await session.close()
+```
+
+These names illustrate the interaction contract; exact class and method names remain subject to implementation design. If the public API uses `start()` as shorthand, it means **create/open the conversation session**. It must not implicitly execute the next workflow stage.
+
+The Host owns the outer workflow session and its I/O channel. Runtime interprets incoming user input in the context of the current workflow state, dispatches the appropriate Agent when permitted, and emits structured output/events through the session. Output may include streamed assistant content, typed Agent results, workflow status, an approval request, a request for clarification, or a terminal result. Streamed text is not itself an authoritative artifact or workflow transition.
+
+Agent execution is session-aware but remains subordinate to the Host. The Host supplies each Agent with its typed input and permitted invocation context; the Agent returns typed output and, where supported, streamed progress. Agent-local conversation context may be maintained for the active workflow session, but Agents do not own the outer session identity, durable workflow state, user approval bindings, or persistence authority. One continuous user-facing conversation may therefore span multiple Agent invocations without exposing separate Agent-owned chat sessions as separate workflows.
+
+The session may begin before `research_proposal` is dispatched. After the proposal is prepared, the same session can emit an approval request and wait for the User. Research execution remains blocked until Runtime validates the User's decision against the exact pending proposal/plan and source-checkpoint binding. A user message or model-generated statement cannot approve itself; Runtime must convert the user's actual decision into a validated, bound decision record.
+
+Session I/O lifecycle and workflow lifecycle are distinct:
+
+- `start_session()` opens the interaction session and initializes its input/output channels; it does not mean “run Research now.”
+- `send(...)` submits user input or a structured user decision to the Host. The Host validates and interprets it; the Agent does not receive authority from the payload.
+- `receive()` exposes the session's output/event stream. Agent output remains provisional until its contract and Runtime validations complete.
+- `close()` closes or detaches the interaction channel. It does not silently mark the workflow complete, approve a gate, or imply that an active run was safely cancelled.
+- Workflow cancellation is an explicit Runtime operation. Session reconnection/reopening is distinct from Runtime recovery of a paused or interrupted workflow. Any resume operation must restore Host-owned durable state and revalidate the relevant source and approval bindings.
+
+This is the Breakdown interaction model to design and implement. Claude's `ClaudeSDKClient` provides a useful reference for a stateful client with connection setup, input submission, message reception, and disconnect; its one-shot `query()` API is a separate interaction mode. Breakdown adopts the session/I/O separation, not Claude's CLI-specific lifecycle or permission authority.
 
 ### References
 
@@ -980,6 +1042,9 @@ In particular, workflow `start_run`, approval waiting, `resume_run`, and complet
 - [Strands middleware handler and phase types](https://github.com/strands-agents/harness-sdk/blob/main/strands-py/src/strands/middleware/types.py)
 - [Strands middleware composition and ordering](https://github.com/strands-agents/harness-sdk/blob/main/strands-py/src/strands/middleware/_registry.py)
 - [Strands Agent.add_middleware API and registration behavior](https://github.com/strands-agents/harness-sdk/blob/main/strands-py/src/strands/agent/agent.py)
+- [Claude Agent SDK stateful client API (connect/query/receive/disconnect)](https://github.com/anthropics/claude-agent-sdk-python/blob/main/src/claude_agent_sdk/client.py)
+- [Claude Agent SDK internal client and session orchestration](https://github.com/anthropics/claude-agent-sdk-python/blob/main/src/claude_agent_sdk/_internal/client.py)
+- [Claude Agent SDK transport boundary](https://github.com/anthropics/claude-agent-sdk-python/blob/main/src/claude_agent_sdk/_internal/transport/__init__.py)
 - [Inspected Breakdown bounded model/tool loop](https://github.com/itz1508/Breakdown/blob/763f763b3ed3f45019d342eb9b1a901ae44b38b7/breakdown/live_backend.py)
 - [Breakdown workflow definition](https://github.com/itz1508/Breakdown/blob/763f763b3ed3f45019d342eb9b1a901ae44b38b7/breakdown.yaml)
 
