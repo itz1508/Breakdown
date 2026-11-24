@@ -5,22 +5,46 @@ Outcomes & Retrospective are kept current as work proceeds. Maintenance
 follows the Codex PLANS.md discipline: every stopping point documented,
 exact commands with expected results, acceptance phrased as behavior.
 
-## Purpose / Big Picture
+## Current Purpose / Big Picture
 
-After this work, a person can point Breakdown at a repository and enter a
-plain-language request. Breakdown executes eight explicit stages:
+Breakdown processes a request through specification, research, repository
+reconciliation, planning, exact package confirmation, and controlled Build.
+The current design baseline is
+[docs/current-architecture-workflow.md](docs/current-architecture-workflow.md).
 
-research_proposal → research_approval → research_execution → findings_review
-→ implementation_planning → plan_approval → build_execution → completion
+Current progression:
 
-with two real user approvals, one authoritative ImplementationPlan,
-sandbox-only builds, independent changed-path detection, and
-Runtime-authorized synchronization of approved paths only.
+```text
+User input
+→ Auditor specification (discovery.json) and revision-preserving review
+→ Accept & Check; Auditor checks the exact accepted revision
+→ recorded user approval
+→ Researcher investigation
+→ Auditor repository reconciliation and source checkpoint
+→ Planner plan, TaskTodo, acceptance criteria, fixtures, and checks
+→ assemble/hash exact package
+→ user confirms exact package
+→ Builder verifies hashes/source preconditions
+→ authorized sandbox and asynchronous TaskTodo execution
+→ assigned checks, evidence retention, synchronization, and Builder outputs
+→ sandbox exit
+→ Completion records the evidence-supported outcome
+```
 
-Phases:
-- Phase 1 (current): five roles + contracts + canonical tools + offline evals.
-- Phase 2: storage/safety/approvals/full engine (`system/storage` family ports).
-- Phase 3: `mcp`/plugin deployment separation, only on evidence.
+Declining the specification or package completes without Build. Material
+changes require re-review and, when package content changes, a new digest
+and renewed confirmation. Detailed gates, handoff rules, supersession,
+recovery, and tests are in the linked workflow document.
+
+**Architecture target:** five independent roles—Researcher, Auditor, Coder,
+Planner, and Builder. Coder is an independent role, not an Auditor sub-role.
+Runtime owns workflow authority; Storage owns durable persistence. Builder
+does not use the shared model loop.
+
+**Status:** design baseline recorded; do not infer that the runtime has been
+migrated or that the workflow has passed implementation tests. Historical
+Phase 1/2 records below document earlier repository work and are not, by
+themselves, the current implementation plan.
 
 ## Progress
 
@@ -65,21 +89,30 @@ Phases:
 
 ## Context and Orientation
 
-- `D:\Breakdown-tmp\breakdown.yaml` — the single declarative workflow authority (def-1, 8 stages).
-- `breakdown/` — product package. Phase 1 modules: `models.py`, `contracts.py`, `engine.py`, `tools.py`, `bindings.py`, `bootstrap.py`, `roles/`.
-- `agents/skills/<role>/SKILL.md` — optional guidance only; never executable authority.
-- `evals/` — offline role evaluation harness (fake backends in Phase 1).
-- Reference repository (patterns only, no imports): `d:\breakdown\system\storage\` (ArtifactStore CAS + canonical serialization), `d:\breakdown\agents\shared\providers\base.py` (request/result shapes).
+- `docs/current-architecture-workflow.md` — canonical current target architecture and end-to-end workflow.
+- `PLANS.md` — living project history and milestone record. Older task plans and test counts are historical unless revalidated against current source.
+- Current code, runtime behavior, tests, and configuration take precedence over stale descriptions in older documentation.
+- Repository target: `itz1508/Breakdown`, branch `main`.
+- Before implementation, re-inspect the current repository and map existing role modules, contracts, model/backend interfaces, Storage owners, workflow definitions, and tests to the target structure. Do not assume paths or behavior from the November 17 baseline still apply.
 
-## Plan of Work
+## Current Plan of Work
 
-Ordered cohesive BuildTasks T0–T9 as approved in the Phase 1 plan
-(gap round 16 corrections applied): one task = one cohesive change,
-each with target paths, expected result, and named check. Task 0 done.
-Current: finish Task 1 (dependency install), then T2–T9 in order,
-each verified before the next.
+The next implementation step is a source-rechecked migration plan against the
+current `main` branch. It must identify the existing source owner for each
+target module, preserve current contracts and persistence, define incremental
+moves, and name behavioral/layering tests. Do not resume the historical T0–T9
+sequence below as though it were the current plan.
 
-## Validation and Acceptance
+Required planning order:
+
+1. Inspect current source, runtime, tests, configuration, and dependency wiring.
+2. Map existing models, roles, backends, Storage, tools, sandbox, and workflow operations to the target architecture.
+3. Identify contract or behavior changes separately from file moves.
+4. Define migration steps and rollback/recovery boundaries.
+5. Add cross-agent contract and import-layering tests before deleting legacy owners.
+6. Implement only under a separately reviewed and approved plan.
+
+## Historical Phase 1 Validation and Acceptance
 
 Run from `D:\Breakdown-tmp`:
 
@@ -105,7 +138,7 @@ is idempotent, tests use tmp fixtures only, no step touches the network
 or the reference repository. If a task fails, previous passing tasks
 remain intact; fix forward, never edit tests to force success.
 
-## Interfaces and Dependencies (Phase 1 targets)
+## Historical Phase 1 Interfaces and Dependencies
 
 - `breakdown.models`: StrictModel (extra=forbid), ExecutionResult, CriterionResult,
   FindingStatus, CapabilityCoverage, ContractKind, RunState, Settings,
@@ -479,370 +512,23 @@ OpenAI-compatible endpoints (Databricks key or custom API key).
   - `+4` tests: Added `web_search` domain constraint, binary rejection, and toolkit dispatch tests in `tests/test_tools.py`.
   - `+2` tests: Added `bot.decide()` cancel lifecycle and cross-session baseline retrieval tests in `tests/test_bot.py`.
   - **Net total: 328 - 33 + 13 = 308 tests**, all passing clean. (D42 peak of 328, minus 33 automation tests retired in D43, plus 13 replacement tests for lifecycle, web_search, and bot decision.)
-## Proposed direction — feature-driven, resumable project execution (2026-11-23)
-
-**Status: design direction recorded; not implemented.** This proposal captures the feature-oriented workflow discussed on 2026-11-23. It does not silently change the current `breakdown.yaml` definition, the eight-stage runtime, or existing persisted records. Implementation requires a separate, reviewed workflow/schema change.
-
-### Purpose
-
-A project-level request should first become a structured, reviewable feature backlog. Breakdown should then work on **one coherent feature at a time**, completing that feature's research, approved plan, implementation, testing, independent verification, and audit before selecting another feature. A session may complete only one feature; unfinished work must remain recoverable rather than being reported as complete or regenerated from the original request.
-
-This is a sequential feature lifecycle, not a deferred scheduler, dependency-wave engine, or parallel build queue.
-
-### Proposed flow
-
-```text
-USER INPUT
-    |
-    v
-HOST-MANAGED CONTEXT GENERATION
-    |
-    v
-FEATURE SCAFFOLDING
-    |  - understand objective, target repository and constraints
-    |  - decompose into coherent, independently verifiable features
-    |  - establish dependencies, acceptance criteria and test intent
-    v
-feature_list.json (versioned proposal)
-    |
-    v
-USER REVIEW / APPROVAL OF BACKLOG REVISION
-    |
-    v
-SELECT ONE ELIGIBLE FEATURE
-    |
-    v
-RESEARCHER — research the selected feature
-    |
-    v
-AUDITOR — review research evidence and unresolved questions
-    |
-    v
-PLANNER — implementation plan and any justified refactor proposal
-    |
-    v
-USER REVIEW / APPROVAL OF EXACT FEATURE PLAN
-    |
-    v
-BUILDER — implement the feature and run its tests
-    |  - frontend/backend implementation as applicable
-    |  - browser automation for browser-visible behavior
-    |  - fix defects within the approved scope
-    |  - capture execution and test evidence
-    v
-HOST-INVOKED INDEPENDENT VERIFICATION
-    |
-    v
-AUDITOR — inspect resulting source, behavior and evidence
-    |
-    +---- Findings do not require a change
-    |          |
-    |          v
-    |     RETAIN FEATURE EVIDENCE
-    |
-    +---- Correction / refactor is justified
-               |
-               v
-          PLANNER — bounded correction/refactor proposal
-               |
-               v
-          USER APPROVAL when plan, paths, scope or source binding changes
-               |
-               v
-          BUILDER — implement approved correction
-               |
-               v
-          INDEPENDENT RE-VERIFICATION
-               |
-               v
-          AUDITOR RE-REVIEW
-    |
-    v
-HOST RECORDS FEATURE COMPLETION AND EVIDENCE REFERENCES
-    |
-    v
-SELECT NEXT ELIGIBLE FEATURE
-```
-
-The feature backlog approval and an individual implementation-plan approval are distinct decisions. Approval must bind the exact manifest/feature revision, plan revision, source checkpoint, authorized paths/actions, and verification criteria relevant to that decision. A changed scope or stale source binding must return to review; an agent's message is never approval.
-
-### Feature manifest responsibilities
-
-`feature_list.json` is the project-level feature manifest, not a second workflow definition and not a transcript of every runtime event. Its proposed contents are:
-
-- Project identity, objective, target-repository identity, manifest schema version, and manifest revision.
-- Stable feature IDs, names, descriptions, priorities, and dependency IDs.
-- Feature requirements, research questions, acceptance criteria, implementation boundaries, and test intent.
-- Browser scenarios where applicable, backend/API checks, and end-to-end verification expectations.
-- Required capability descriptions for tool discovery; these are requests, not grants of execution authority.
-- A coarse feature lifecycle status, the active feature ID, and references to the approved plan, run, findings, test results, and verification evidence.
-
-Reports, source diffs, test output, approvals, and event history remain separate durable artifacts. The manifest references those artifacts rather than embedding large reports or duplicating the runtime journal.
-
-**Ownership and source-of-truth rule:** the Host is the only component that changes the authoritative manifest revision or feature lifecycle status. Agents return proposed feature data, findings, plans, and results; they do not directly rewrite the manifest or runtime stores. The existing ArtifactStore/revision mechanisms should be reused where suitable rather than introducing a second persistence owner. The user-facing `feature_list.json` serialization and its eventual location must have one canonical owner; do not maintain competing editable copies.
-
-The three records remain distinct:
-
-| Record | Authority |
-|---|---|
-| `breakdown.yaml` | Executable workflow definition: stages, contracts, transitions, gates, and deterministic operations |
-| `feature_list.json` | Project backlog: feature decomposition, dependencies, acceptance intent, status, and artifact references |
-| `.breakdown/` runtime state | Run state, events, approvals, checkpoints, locks, artifacts, and recovery information |
-
-### Responsibility boundaries
-
-- **Context generation and feature scaffolding:** Host-managed intake. It may use model assistance, but the Host validates and persists the proposed manifest. This is not a new autonomous agent or a source of execution authority.
-- **Researcher:** Researches the currently selected feature and returns source-grounded findings, constraints, and unanswered questions.
-- **Auditor:** Performs read-only review of research, repository state, implementation changes, and verification evidence. It reports defects and architectural concerns with evidence; it does not edit source or authorize a refactor.
-- **Planner:** Owns implementation design and bounded correction/refactor proposals. It cannot freeze, approve, or execute its own plan.
-- **Builder:** Implements only the approved feature/plan scope, including frontend/backend work and builder-level browser/manual tests. Builder test reports are evidence, not independent authorization.
-- **Verifier:** Host-invoked independent verification against the approved acceptance criteria. It is not a fifth autonomous workflow agent and cannot advance the workflow.
-- **Coder:** An independent role with its own agent module, domain contract, skill, and tests. It is independently constructible and dispatchable; Runtime still owns activation, permissions, workflow progression, and persistence.
-- **Analyzer:** Do not add a separate autonomous Analyzer agent. Architectural analysis is part of Auditor's findings; Planner turns justified findings into a proposed design.
-
-### Tool Discovery Service boundary
-
-The separate Tool Discovery Service is a capability resolver used by the workflow. Given structured feature context and the current operation, it can return relevant registered tool definitions, schemas, versions, and availability information. It does not generate the feature backlog, invent executable tools, execute tools, approve plans, or advance stages.
-
-Discovery results are candidates only. The Host must still enforce caller identity, stage/operation allowlists, tool provenance, authorization, and execution-time checks. The service remains independently deployable and must not become a second workflow authority or a Breakdown-specific dependency in its core.
-
-### Session continuity and completion invariants
-
-1. At most one feature is active for a project by default. Select the next feature only after its dependencies are completed and the current feature reaches the defined completion boundary.
-2. A feature is a coherent vertical increment. Its frontend, backend, tests, and integration work should normally remain together when they contribute to the same user-visible capability; do not turn each layer into a separate feature merely to create more backlog entries.
-3. Do not start the next feature because the current session is ending. Complete the current feature where possible; otherwise persist its exact state and resume it in the next session.
-4. Resume from the existing manifest revision, active feature, run ID, approved plan binding, source checkpoint, completed research, execution attempts, test/verification evidence, Auditor findings, and unresolved questions. Do not regenerate completed work from the original user request.
-5. Feature completion requires accepted criteria to be accounted for, independent verification evidence, Auditor review disposition, reconciled attempts, and retained artifact references. Builder self-report alone cannot complete a feature.
-6. A refactor is not automatic. Auditor findings justify Planner analysis; a plan/scope/source change follows the applicable approval boundary before Builder acts.
-7. If work is blocked or interrupted, retain that state and its evidence. Do not convert missing checks or uncertainty into completion.
-
-### Design validation required before implementation
-
-The feature scaffolder and lifecycle should be evaluated against at least these cases:
-
-- A small single-feature request and a large multi-feature application request.
-- Features with explicit dependencies and features that can be independently selected.
-- A cross-cutting prerequisite (for example, authentication) used by later features.
-- An ambiguous request where the correct action is to preserve uncertainty and ask for review, not invent requirements.
-- A feature spanning UI, API/backend, persistence, and browser tests.
-- Duplicate or overlapping features, circular dependencies, an overly broad feature, and a feature too small to merit its own lifecycle.
-- Research that changes acceptance criteria or reveals a new dependency.
-- Builder changes outside approved paths, tests that do not exercise the acceptance criteria, and browser automation that cannot run.
-- Auditor findings requiring no change, a bounded in-scope correction, or a scope-changing refactor requiring renewed approval.
-- Session interruption during research, implementation, verification, or audit, followed by resume without losing evidence or repeating completed operations.
-- A stale manifest/plan revision or changed source checkpoint at approval or execution time.
-
-Acceptance is behavioral: the tests must demonstrate that one feature can be taken from an approved proposal through implementation, independent verification, audit disposition, durable retention, and later-session resume, while the next feature remains untouched until the current one is complete.
-
-### Decisions still open
-
-- The canonical on-disk location and edit/export policy for `feature_list.json`.
-- Whether context generation and feature scaffolding extend the current Auditor `research_proposal` operation or require a separately declared intake operation in a future workflow revision.
-- The exact lifecycle status vocabulary and which transitions are deterministic Host operations.
-- How to represent shared foundations and cross-cutting requirements without splitting a coherent feature or duplicating ownership.
-- Which browser automation and other test capabilities are registered, actually executable, and authorized in each environment.
-
-**Next step:** design the manifest schema and transition/approval bindings, then create good/bad lifecycle evaluations. Do not begin implementation by adding a new agent, copying Tool Discovery into Breakdown, or changing the existing workflow definition without a separately reviewed plan.
-
-
-### Long-running feature implementation protocol (sample-derived)
-
-This protocol makes the feature-at-a-time rule operational for multi-session application work. It is a proposed implementation discipline; it does not change the current runtime until a separately reviewed contract/schema implementation is accepted.
-
-#### 1. Scaffold and freeze the test specification
-
-The context/feature scaffolder produces a versioned `feature_list.json` containing stable feature IDs and stable test IDs. Each test contains its original description, ordered steps, expected visible outcomes, and an initial `"passes": false`. UI tests must describe the real user journey, not merely an API call or internal function invocation.
-
-After the user approves a manifest revision, treat the feature and test definitions as immutable:
-
-- The only field an implementation/verification cycle may update in `feature_list.json` is a test's `passes` boolean.
-- Do not remove tests, rewrite descriptions, change steps or expected outcomes, merge/split tests, reorder tests, or silently regenerate the manifest.
-- A missing, ambiguous, contradictory, or technically impossible test is recorded as a finding. Resolving it requires a separately reviewed manifest revision; it is not permission to edit the approved test in place.
-- Keep the manifest revision and a digest of its immutable test specification bound to the approval. The Host verifies that a proposed update changes only `passes` for existing test IDs.
-- The Host is the authoritative writer of the manifest. Agents return verification outcomes and evidence references; they do not directly edit project state.
-
-This is intentionally stricter than treating `feature_list.json` as a general progress document. It is an approved test specification with narrowly mutable verification bits.
-
-#### 2. Work one feature, end to end
-
-Select one eligible feature whose dependencies are complete. Research it, resolve constraints, define/approve its implementation plan, then implement the complete vertical slice. Include frontend, backend, persistence and integration changes where the feature needs them. Do not split a user-visible feature into disconnected frontend/backend tasks merely to increase the feature count.
-
-The Builder may test and fix its own work, but its report is not independent verification. Do not begin a second feature while the current one has unverified tests, unresolved blocking findings, or incomplete required evidence.
-
-#### 3. Mandatory real-browser verification for UI features
-
-For every feature with user-visible behavior, acceptance requires exercising the actual deployed/local application UI in a real browser using an authorized browser-automation tool. The test must behave like a user:
-
-- Navigate to the application and the relevant page through the browser.
-- Click visible controls; type using keyboard input; submit forms; scroll; navigate; and use the application as a person would.
-- Exercise the complete user workflow from its entry point through the expected outcome, including relevant error, empty, loading, success, and recovery states specified by the test.
-- Capture screenshots at each meaningful test step, including the resulting state after important interactions. Save them under a stable path such as `verification/<feature-id>/<test-id>/step-<nn>.png`.
-- Inspect each screenshot against the approved design/specification and expected visual state. A screenshot merely existing is not visual verification.
-- Observe browser console output during the workflow. Any console error blocks the test until investigated and resolved or explicitly dispositioned under an approved exception; do not silently filter errors.
-- Record the browser, viewport, application revision/source checkpoint, test ID, step, timestamp, and screenshot artifact references in the verification record.
-
-Do not use `curl`, direct HTTP requests, database inspection, internal function calls, or JavaScript evaluation as a substitute for user interaction. Do not use `page.evaluate`, injected scripts, direct DOM mutation, or app-state manipulation to bypass the interface. Browser automation may use normal locator/accessibility interactions, keyboard, mouse, navigation, scrolling, screenshots, and supported browser console/log APIs. API/unit/integration tests remain useful supplemental checks, never the sole acceptance evidence for UI behavior.
-
-If a feature genuinely has no user-visible interface, do not fabricate one or mark a UI test as passing. Record the mismatch as blocked/not applicable and obtain an explicit test-spec decision through a new approved manifest revision before changing the test contract.
-
-#### 4. Verification evidence and the `passes` update
-
-A test can change from `"passes": false` to `"passes": true` only after all of the following are present:
-
-1. Every prescribed step was executed against the intended application revision.
-2. The expected functional result was observed through the real UI.
-3. Required screenshots were captured and visually inspected.
-4. Browser console errors were inspected; no unresolved errors remain.
-5. The full user workflow completed, not just an isolated control or endpoint.
-6. Any defects found during the run were fixed and the affected workflow was rerun.
-7. Independent verification accepts the evidence; Builder self-report alone cannot flip the field.
-
-Keep the evidence itself outside `feature_list.json` (for example in the existing Host-managed artifact store and a human-readable `verification/` export). Use stable feature/test IDs so each screenshot, browser trace, console record, source checkpoint, and verifier result can be correlated without adding fields to the frozen manifest. The Host performs a narrow update to the single `passes` field and records the before/after manifest digest and supporting artifact references in its durable event/artifact history.
-
-A code change can invalidate a previously verified test. The Host must mark affected `passes` values false (the only permitted field mutation) when their verification is no longer valid, then require the same unchanged test steps to be rerun before setting them true again. Never leave a stale true value merely to preserve a completion count.
-
-#### 5. Fix regressions before expanding scope
-
-Run the relevant existing test suite before and after feature changes. Triage pre-existing failures separately from regressions. A regression blocks completion of the current feature and takes priority over starting new feature work. Do not edit, delete, weaken, skip, or reorder tests to obtain a green result. A test that cannot be executed remains not passing; missing infrastructure is not a pass.
-
-The quality target is correctness and verified user experience, not maximizing the number of green booleans. A zero-console-error target applies to the tested workflow; performance and responsive behavior must also be checked against explicit acceptance criteria rather than vague claims such as "fast" or "polished."
-
-#### 6. Commit a verified feature as a coherent checkpoint
-
-After the feature's required tests have been independently verified:
-
-- Stage only the intended implementation files, verification artifacts, and the approved `passes` changes. Do not use an indiscriminate `git add .`; inspect the working tree and staged diff to avoid including unrelated user changes, secrets, temporary files, or generated artifacts.
-- Commit with a feature-specific message that identifies the implementation and its evidence. The commit should identify the feature, tests exercised, browser verification, and manifest pass-bit updates.
-- Retain the commit SHA, source checkpoint, verification report, screenshot references, and manifest revision in the run record.
-- Update the existing living `PLANS.md` milestone/retrospective when the implementation plan or durable project direction changes. Runtime session progress, resumable state, and event history belong to the existing Host-managed `.breakdown/` stores.
-
-Do not create parallel `work-progress.txt` and `claude-progress.txt` files as competing progress authorities. If a future human-readable handoff projection is needed, derive it from the canonical run/feature records or designate exactly one generated projection with a clear owner.
-
-#### 7. End the session without losing state
-
-Prefer ending a session immediately after one feature reaches its verified completion boundary. Before stopping, ensure:
-
-- The active feature ID, manifest revision, plan/approval bindings, source checkpoint, commit SHA, and current test counts are durable.
-- Every completed test has its screenshot and verification evidence retained, and only those test `passes` values are true.
-- Incomplete or blocked tests remain false with a specific reason and next action recorded outside the manifest.
-- Defects, unresolved risks, and the next eligible feature are recorded in the run handoff.
-- The application is left in its last known usable state; do not hide an unfinished or broken state behind a passing flag.
-
-If interrupted before feature completion, persist an explicit resumable checkpoint and keep incomplete tests false. Do not start the next feature. A checkpoint commit may be used when repository policy requires committed session progress, but it must be clearly identified as incomplete and must not imply feature completion. Never discard unrelated or pre-existing working-tree changes to manufacture a clean state.
-
-#### 8. Per-feature acceptance record
-
-The Host should be able to produce a compact record equivalent to:
-
-```text
-Feature: FEAT-###
-Manifest revision: <revision>
-Approved plan: <artifact-ref + digest>
-Source checkpoint: <commit/checkpoint>
-Tests: <verified>/<total>
-Browser: <browser + version>
-Viewport(s): <tested viewport(s)>
-Screenshots: verification/<feature-id>/<test-id>/
-Console: <observed errors and disposition>
-Independent verifier: <result + evidence ref>
-Auditor review: <findings + disposition>
-Commit: <commit SHA>
-Next action: <next feature or explicit blocker>
-```
-
-The test count is calculated from the immutable test IDs and current `passes` values; it is never hand-edited. A feature is complete only when every required test is passing on the retained source checkpoint, independent verification and Auditor review are recorded, and no blocking finding remains.
-
-#### Scenarios required to validate this protocol
-
-- Agent attempts to edit a test description, step, order, expected result, or any field other than `passes`: Host rejects the manifest mutation.
-- Agent claims a UI test passed using only `curl`, an API client, or JavaScript evaluation: Host rejects the pass-bit update.
-- Screenshot is missing, captured at the wrong step, or not visually reviewed: test remains not passing.
-- Browser console contains an unresolved error: test remains not passing.
-- One step fails: fix the product, rerun the affected workflow, and retain both failure and corrected-run evidence.
-- A later code change affects an earlier passing test: Host invalidates the affected pass bit and requires re-verification.
-- Session ends mid-feature: resume the same feature from its durable checkpoint; do not select the next feature.
-- A new requirement or incorrect test specification is discovered: preserve the approved manifest and request a separately reviewed revision.
-- Working tree contains unrelated user changes: stage only explicitly owned paths and preserve the unrelated changes.
-- All feature tests are green but independent verification or Auditor review is missing: feature remains incomplete.
-
-## Current target architecture — independent agent roles (2026-11-24)
-
-**Status:** Architecture direction recorded for future implementation. This is a target structure, not a claim that the current repository has already been reorganized. It supersedes earlier conflicting role-ownership and middleware proposals in this document. Re-check the live repository before implementation; do not treat historical progress entries as current source state.
-
-```text
-breakdown/
-├── __init__.py
-├── __main__.py                   # only entry point; builds the agents dict
-├── tests/                        # layering, cross-agent contracts, workflow-level
-├── shared/
-│   ├── __init__.py
-│   ├── base.py
-│   ├── config.py
-│   ├── models.py
-│   └── tests/
-├── agents/
-│   ├── __init__.py               # explicit imports
-│   ├── loop.py                   # shared model loop
-│   ├── prompt.py
-│   ├── researcher/
-│   │   ├── __init__.py
-│   │   ├── agent.py
-│   │   ├── SKILL.md
-│   │   └── tests/
-│   ├── auditor/
-│   │   ├── __init__.py
-│   │   ├── agent.py
-│   │   ├── SKILL.md
-│   │   └── tests/
-│   ├── coder/
-│   │   ├── __init__.py
-│   │   ├── agent.py
-│   │   ├── SKILL.md
-│   │   └── tests/
-│   ├── planner/
-│   │   ├── __init__.py
-│   │   ├── agent.py
-│   │   ├── SKILL.md
-│   │   └── tests/
-│   └── builder/
-│       ├── __init__.py
-│       ├── agent.py
-│       ├── SKILL.md
-│       └── tests/                # Builder does not use the shared model loop
-└── system/
-    ├── runtime/
-    │   ├── __init__.py
-    │   └── sandbox.py
-    ├── storage/
-    ├── tools/
-    ├── memory.py
-    ├── safety.py
-    └── tests/
-```
-
-### Role and package boundaries
-
-- **Five independent roles:** Researcher, Auditor, Coder, Planner, and Builder. Each owns its behavior, typed domain contract, skill guidance, and focused tests. Coder is not nested under Auditor and is not an Auditor-owned sub-role.
-- **Composition root:** `breakdown/__main__.py` is the only application entry point and constructs the explicit agents dictionary. Construction must be callable and dependency-injected; importing modules must not instantiate agents, read credentials, or perform external work.
-- **Shared package:** `shared/` contains only cross-role contracts, configuration types, and shared artifact models. `shared/base.py` defines minimal protocols/base contracts; it must not become a universal Agent superclass or introduce an inheritance framework.
-- **Shared model loop:** `agents/loop.py` provides the common model/tool loop for roles that use it. Agent-specific behavior and request/result contracts remain in each role's `agent.py`. Builder does not use this shared model loop.
-- **Builder capability:** Builder still receives its required coding/execution capability through dependency injection. Absence of the shared model loop does not mean Builder has no backend or execution interface.
-- **Runtime authority:** `system/runtime/` owns workflow coordination, role activation, approvals, authorization, sandbox lifecycle, and transitions. Independent roles do not gain workflow authority by being independently constructible.
-- **Storage and memory:** `system/storage/` owns durable persistence. `system/memory.py` exposes memory behavior while persistence remains Storage-owned; do not create a competing persistence owner.
-- **Tools and safety:** `system/tools/` owns canonical tool registration/dispatch and associated authorization integration. `system/safety.py` owns safety boundaries such as path containment and synchronization safeguards.
-- **Verification:** Independent verification remains a System/Runtime-controlled operation; this target does not add a sixth autonomous Verifier role.
-- **No unapproved provider layer:** Do not add a `providers/` package or a new provider abstraction as part of this restructuring. Retain and inject existing backend capabilities unless source inspection and a separately approved design demonstrate a concrete need.
-- **No premature middleware framework:** The previously recorded shared Input → Wrap → Output middleware proposal is withdrawn. Do not implement it or add a middleware package based on that superseded entry.
-
-### Dependency direction
-
-- Agents consume shared contracts and injected capabilities; they do not import sibling agents or own Runtime/Storage.
-- Runtime composes and invokes roles through explicit contracts; it owns lifecycle and policy decisions.
-- Storage does not import agents.
-- Shared modules do not import upward into agents or system.
-- Keep internal Runtime/Storage models in their owning components; only genuinely cross-boundary contracts and artifact schemas belong in `shared/`.
-
-### Implementation guardrails
-
-This structure is a design target only. Before moving modules, inspect the current `main` source and map each existing model, protocol, backend, role, and test to its new owner. Migrate incrementally, preserve public behavior, and add import-layering and cross-role contract tests. Do not delete legacy modules until all imports, tests, and entry-point wiring have moved and been verified. No implementation, test result, or runtime behavior is implied by this record.
+## Current Architecture and Workflow Record
+
+The active design document is
+[docs/current-architecture-workflow.md](docs/current-architecture-workflow.md).
+
+It defines the five-role target structure, shared handoff, Runtime/Storage
+boundaries, specification and review loop, research and repository
+reconciliation, Planner checks, confirmed package and digest, Builder
+preconditions and sandbox lifecycle, result synchronization, completion
+outcomes, optional independent verification, and end-to-end test scenarios.
+
+The previous feature-backlog / `feature_list.json` / one-feature-at-a-time
+workflow proposal is superseded and is not the current orchestration model.
+Its test-pass-bit and mandatory browser-verification protocol must not be
+carried forward as active workflow requirements. The previous Coder-under-
+Auditor ownership and shared middleware proposal are also superseded.
+
+This record is a design target only. No code migration or runtime behavior is
+implied. Verify all current source interfaces before implementation.
 
