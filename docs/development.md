@@ -66,4 +66,4 @@ Review changed files for:
 
 ## Target architecture note
 
-The target five-skill architecture and project work tree are recorded in docs/current-architecture-workflow.md. Current source still has the flat `breakdown/` package, the existing `breakdown/roles/` modules, and the executable eight-stage `breakdown.yaml`. Treat target paths and behavior as proposed until mapped and implemented under a separately reviewed source-grounded plan.
+The latest four-agent target architecture and project work tree are recorded in docs/current-architecture-workflow.md; the source-owner map and consolidation gates are in docs/structure-migration.md. Current source still has the flat `breakdown/` package, `breakdown/roles/`, top-level `agents/skills/`, root `tests/`, and the executable eight-stage `breakdown.yaml`. Treat target paths as proposed until each owner is moved, every consumer is repointed, and the relevant checks pass.

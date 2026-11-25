@@ -36,12 +36,13 @@ changes require re-review and, when package content changes, a new digest
 and renewed confirmation. Detailed gates, handoff rules, supersession,
 recovery, and tests are in the linked workflow document.
 
-**Architecture target:** five independently dispatched agent skills—Auditor, Researcher, Planner, Coder, and Builder. Host owns orchestration and authority; Storage owns durable persistence. Independent validation is a required target operation after Builder export/exit, but its invocation interface and backend contract must be designed from existing source. The repository currently has verification helpers in `breakdown/verification.py`; default Bootstrap does not register a verifier backend. The existing `breakdown/` source layout and eight-stage `breakdown.yaml` remain the executable implementation on `main` until a separately reviewed migration is implemented.
+**Architecture target (2026-11-25):** four agents—Auditor, Researcher, Planner, and Builder—with Coder retained as an Auditor-owned read-only capability. The target package layout, YAML module-docstring definitions, Runtime/Storage boundaries, and consolidation rules are in [docs/current-architecture-workflow.md](docs/current-architecture-workflow.md). The physical source at the baseline commit is still the flat `breakdown/` package, `breakdown/roles/`, top-level `agents/skills/`, root `tests/`, and the eight-stage `breakdown.yaml`; no code migration is claimed by this documentation slice.
 
 **Status:** target behavior is documented separately from current implementation. Do not infer that the runtime has been migrated or that the target workflow has passed implementation tests.
 
 ## Progress
 
+- [x] (2026-11-25) Source-rechecked the GitHub baseline at `71218fe820208ff3b5e6118ea5c017568f7a5a73`; created `migration/latest-four-agent-layout`; recorded the four-agent target and source-owner migration map in `docs/structure-migration.md`. Documentation only; runtime source remains unmoved.
 
 - [x] (2026-11-17) M0 repository assessment of d:\breakdown (owners: ArtifactStore/CheckpointStore/EventStore/ReceiptStore exist; WorkflowEngine/ContractRegistry/RunStore absent; no model SDK declared; no CI/pre-commit; no persisted 8-stage runs)
 - [x] (2026-11-17) Task 0: D:\Breakdown-tmp created; git initialized; breakdown.yaml (def-1 seed) copied
@@ -62,6 +63,9 @@ recovery, and tests are in the linked workflow document.
 - [x] (2026-11-17) First commit after gate: `ba9d0e1` on `main` — 41 files, working tree clean
 
 ## Surprises & Discoveries
+
+- (2026-11-25) GitHub `main` is `itz1508/Breakdown` (default branch `main`, not `master`). The package tree still contains `breakdown/roles/`, flat `breakdown/*.py` modules, top-level `agents/skills/*/SKILL.md`, and root `tests/`. Imports also appear in evals, scripts, the CLI, and `breakdown.yaml`; deleting old directories before migrating those consumers would break the package. The initial source-owner map is recorded in `docs/structure-migration.md`.
+- (2026-11-25) The latest target has four agents, not five independent skills: Coder remains an Auditor-owned read-only capability. Earlier five-skill target text is superseded by the new target document.
 
 - (2026-11-24) Source audit confirmed the executable implementation on main is the flat breakdown/ package, breakdown/roles/, and the eight-stage breakdown.yaml. Bootstrap constructs Coder as an Auditor-injected code-analysis capability and does not register a Verifier backend. The target skill tree and revised workflow are proposals, not deployed structure.
 - (2026-11-24) README, CLI, Settings, YAML and Python source are not interchangeable documentation authorities: breakdown.yaml declares stages; Python models/contracts/engine enforce them; PLANS.md records history and decisions. The new docs state these boundaries explicitly.
@@ -89,7 +93,8 @@ recovery, and tests are in the linked workflow document.
 
 ## Context and Orientation
 
-- `docs/current-architecture-workflow.md` — target skill architecture, runtime workflow, and project work-tree model; not current deployed behavior.
+- `docs/current-architecture-workflow.md` — latest four-agent target architecture and workflow; not current deployed behavior.
+- `docs/structure-migration.md` — source-grounded owner map, phased migration, and legacy-removal gate.
 - `PLANS.md` — living project history and milestone record. Older task plans and test counts are historical unless revalidated against current source.
 - Current code, runtime behavior, tests, and configuration take precedence over stale descriptions in older documentation.
 - Repository target: `itz1508/Breakdown`, branch `main`.
@@ -97,11 +102,7 @@ recovery, and tests are in the linked workflow document.
 
 ## Current Plan of Work
 
-The next implementation work is a source-rechecked migration plan against the
-current `main` branch. It must identify the existing source owner for every
-target module and contract, preserve current behavior/persistence, and separate
-behavioral changes from file moves. This documentation update does not start
-that migration.
+The source-rechecked migration baseline is now recorded in `docs/structure-migration.md` on branch `migration/latest-four-agent-layout`. This first slice updates the target contract and source-owner map only; no runtime modules have moved. Implementation must preserve current behavior and durable formats, separate behavioral changes from file moves, and remove each legacy owner only after every consumer is repointed and the relevant checks pass.
 
 Planning/decomposition rules for that implementation plan:
 
@@ -119,17 +120,16 @@ Planning/decomposition rules for that implementation plan:
 - Do not add Stage Plans for each micro-task, deferred queues, dependency waves,
   batches, or artificial phase barriers.
 
-Required planning order:
+Required migration order:
 
-1. Inspect current source, runtime, tests, configuration, and dependency wiring.
-2. Map existing models, skills, backends, Storage, MCP tools, hooks, sandbox,
-   and workflow operations to the target architecture.
-3. Build the file-level task tree from actual source and required changes.
-4. Separate contract/behavior changes from file moves and identify real task
-   dependencies and parallel-safe ownership.
-5. Define migration steps, rollback/recovery boundaries, and focused tests.
-6. Review the implementation plan and task tree before implementation.
-7. Implement only after explicit approval.
+1. Reconfirm the base commit and inspect current source, runtime, tests, configuration, and dependency wiring.
+2. Finalize the file-level owner map from actual imports and behavior; resolve open destinations before moving modules.
+3. Establish `shared/` contracts and configuration before dependent agent/runtime changes.
+4. Move each agent and its tests into its owner folder; keep Coder inside Auditor.
+5. Move Runtime, Storage, tools, safety, and memory while preserving existing public behavior and persistence formats.
+6. Repoint `__main__.py`, tests, evals, scripts, configuration, and documentation.
+7. Remove old paths only after reference scans and focused tests prove each owner has been consolidated.
+8. Run the complete offline verification gate and record exact outputs; live model, sandbox, and UI behavior remain separately unverified unless actually exercised.
 
 
 

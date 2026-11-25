@@ -153,6 +153,6 @@ The Safety boundary independently detects changed paths, but that is a path-inte
 ## Current implementation versus target direction
 
 - Current implementation: breakdown/ flat modules, breakdown/roles/, breakdown.yaml with eight stages, and the current Bootstrap wiring described above.
-- Proposed target: five independently dispatched agent skills, Host/Storage ownership, the revised workflow, and the project work tree in [Target Architecture and Workflow](current-architecture-workflow.md).
+- Proposed target: four agents (Auditor, Researcher, Planner, Builder), with Coder retained as an Auditor-owned read-only capability; a `shared/` + `agents/` + `system/` package split; YAML module-docstring agent definitions; and the revised workflow in [Target Architecture and Workflow](current-architecture-workflow.md). The source migration map and stale-path removal gate are in [Structure Migration](structure-migration.md).
 
-Do not use the proposed layout as an onboarding description or claim that independent Coder dispatch is already active.
+Do not use the proposed layout as an onboarding description or claim that the package migration is already implemented.
