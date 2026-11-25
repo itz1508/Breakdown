@@ -21,22 +21,34 @@ import argparse
 import sys
 from pathlib import Path
 from typing import Any
-
-from breakdown.approvals import ApprovalError
-from breakdown.bindings import BindingNotValid
-from breakdown.bootstrap import BootstrapError, Runtime, build_live_backends, build_runtime
-from breakdown.contracts import (
-    RUNTIME_OWNED_KEYS,
-    ContractConfigurationError,
+from breakdown.auditor.agent import Auditor
+from breakdown.coder.agent import Coder
+from breakdown.planner.agent import Planner
+from breakdown.planner.builder.agent import Builder
+from breakdown.researcher.agent import Researcher
+from breakdown.shared.models import ContractKind, InitialRequest, RunRecord, Settings
+from breakdown.system.runtime.approvals import ApprovalError
+from breakdown.system.runtime.bindings import BindingNotValid
+from breakdown.system.runtime.bootstrap import BootstrapError, Runtime, build_live_backends, build_runtime
+from breakdown.system.runtime.contracts import (
     build_contract_registry,
+    ContractConfigurationError,
     mapped_output_keys,
+    RUNTIME_OWNED_KEYS,
     validate_alignment,
     validate_definition_consistency,
 )
-from breakdown.demo import OfflineDemoCodingBackend, OfflineDemoRoleBackend
-from breakdown.engine import EngineError, WorkflowDefinitionError, load_workflow
-from breakdown.models import ContractKind, InitialRequest, RunRecord, Settings
-from breakdown.reports import render_run_report
+from breakdown.system.runtime.demo import OfflineDemoCodingBackend, OfflineDemoRoleBackend
+from breakdown.system.runtime.engine import EngineError, WorkflowDefinitionError, load_workflow
+from breakdown.system.runtime.reports import render_run_report
+
+AGENT_TYPES = {
+    "auditor": Auditor,
+    "researcher": Researcher,
+    "coder": Coder,
+    "planner": Planner,
+    "builder": Builder,
+}
 
 
 def _run_check(settings: Settings) -> int:
@@ -113,8 +125,8 @@ def _demo_request_text(settings: Settings, run_id: str | None, fallback: str) ->
     initial_request artifact is the authoritative source of that text."""
     if run_id is None:
         return fallback
-    from breakdown.artifact_store import ArtifactStore
-    from breakdown.run_store import RunStore
+    from breakdown.system.storage.artifact_store import ArtifactStore
+    from breakdown.system.storage.run_store import RunStore
 
     state_root = (settings.target_repo.resolve() / settings.state_root).resolve()
     loaded = RunStore(state_root).load(run_id)
@@ -142,6 +154,7 @@ def _build_runtime(args: argparse.Namespace, settings: Settings, run_id: str | N
         role_backend=OfflineDemoRoleBackend(text),
         coding_backend=OfflineDemoCodingBackend(text),
         offline_demo=True,
+        agent_types=AGENT_TYPES,
         force_unlock=getattr(args, "force_unlock", False),
     )
 
@@ -149,7 +162,7 @@ def _build_runtime(args: argparse.Namespace, settings: Settings, run_id: str | N
 def _build_live_runtime(args: argparse.Namespace, settings: Settings) -> Runtime:
     """Live path (D30/D33): bindings are mandatory evidence — produce them by
     running `evals/run.py --live` against the candidate endpoint first."""
-    from breakdown.live_backend import LiveBackendError
+    from breakdown.system.runtime.live_backend import LiveBackendError
 
     if not settings.backend_bindings_path or not Path(settings.backend_bindings_path).exists():
         raise BootstrapError(
@@ -166,6 +179,7 @@ def _build_live_runtime(args: argparse.Namespace, settings: Settings) -> Runtime
         role_backends=role_backends,
         coding_backend=coding_backend,
         runtime_kind="live_openai",
+        agent_types=AGENT_TYPES,
         force_unlock=getattr(args, "force_unlock", False),
     )
 
@@ -228,8 +242,8 @@ def _cmd_cancel(args: argparse.Namespace) -> int:
 
 def _cmd_status(args: argparse.Namespace) -> int:
     """Read-only: opens the stores directly (no lock, no backends)."""
-    from breakdown.events import EventStore
-    from breakdown.run_store import RunStore
+    from breakdown.system.storage.events import EventStore
+    from breakdown.system.storage.run_store import RunStore
 
     settings = _settings_from_args(args)
     state_root = (settings.target_repo.resolve() / settings.state_root).resolve()
@@ -252,7 +266,7 @@ def _cmd_memory(args: argparse.Namespace) -> int:
     Opens the store directly: no lock, no backends. Writes are runtime-only
     (lesson extraction and live consolidation); this command never mutates.
     """
-    from breakdown.memory import MemoryStore
+    from breakdown.system.memory import MemoryStore
 
     settings = _settings_from_args(args)
     state_root = (settings.target_repo.resolve() / settings.state_root).resolve()
@@ -285,9 +299,9 @@ def _cmd_consolidate_memory(args: argparse.Namespace) -> int:
 
     Without ``--live``: prints a refusal and exits nonzero.
     """
-    from breakdown.bindings import BackendBindingStore
-    from breakdown.live_backend import build_openai_client, resolve_model
-    from breakdown.memory import MemoryStore
+    from breakdown.system.runtime.bindings import BackendBindingStore
+    from breakdown.system.runtime.live_backend import build_openai_client, resolve_model
+    from breakdown.system.memory import MemoryStore
 
     settings = _settings_from_args(args)
 
@@ -331,7 +345,7 @@ def _cmd_consolidate_memory(args: argparse.Namespace) -> int:
 
 def _cmd_bot(args: argparse.Namespace) -> int:
     """Run task through BreakdownBot with streaming or summarized output (D41)."""
-    from breakdown.bot import BreakdownBot
+    from breakdown.system.runtime.bot import BreakdownBot
 
     settings = _settings_from_args(args)
     offline_demo = getattr(args, "offline_demo", False)
@@ -339,6 +353,7 @@ def _cmd_bot(args: argparse.Namespace) -> int:
 
     bot = BreakdownBot.from_settings(
         settings,
+        agent_types=AGENT_TYPES,
         offline_demo=offline_demo,
         task_text=task_text,
         force_unlock=getattr(args, "force_unlock", False),

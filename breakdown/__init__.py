@@ -1,11 +1,7 @@
-"""OneShot Breakdown: contract-governed eight-stage workflow.
+"""Breakdown application package.
 
-Workflow: research_proposal -> research_approval -> research_execution ->
-findings_review -> implementation_planning -> plan_approval ->
-build_execution -> completion.
-
-Importing this package performs no configuration loading, no file writes,
-no SDK construction, and no workflow execution.
+The composition root is :mod:`breakdown.__main__`; shared contracts and
+system capabilities are organized by ownership under this package.
 """
 
 __version__ = "0.1.0"

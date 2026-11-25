@@ -386,8 +386,6 @@ stages:
   - unresolved_questions
   - exact_user_intent
   - source_checkpoint
-  sub_roles:
-  - coder
   produces:
   - classified_findings
   - normalized_evidence
@@ -670,8 +668,6 @@ ownership:
     stages:
     - research_proposal
     - findings_review
-    sub_roles:
-    - coder
     application_source_changes: false
   researcher:
     stages:
@@ -735,13 +731,12 @@ handoff_rules:
 - Criterion uncertainty never advances a decision or source-changing stage.
 - Lifecycle failure and criterion not_valid are distinct.
 role_guidance:
-  shared_source: agents/role_guidance.md
   role_sources:
-    auditor: agents/skills/auditor/SKILL.md
-    researcher: agents/skills/researcher/SKILL.md
-    coder: agents/skills/coder/SKILL.md
-    planner: agents/skills/planner/SKILL.md
-    builder: agents/skills/builder/SKILL.md
+    auditor: breakdown/auditor/SKILL.md
+    researcher: breakdown/researcher/SKILL.md
+    coder: breakdown/coder/SKILL.md
+    planner: breakdown/planner/SKILL.md
+    builder: breakdown/planner/builder/SKILL.md
   semantics:
     executable: false
     workflow_authority: false
@@ -753,11 +748,7 @@ role_guidance:
   - researcher
   - planner
   - builder
-  sub_roles:
-    coder:
-      parent_role: auditor
-      allowed_stages:
-      - findings_review
+  - coder
   non_model_roles:
   - user
   - runtime

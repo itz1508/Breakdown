@@ -1,145 +1,62 @@
-# OneShot Breakdown
+# Breakdown
 
-A contract-driven, eight-stage workflow engine: one user request becomes a
-researched, approved, sandboxed, and synchronized change — with every step
-durable, auditable, and bounded by a deterministic safety boundary.
+Breakdown is a Python system for controlled research, specification review, planning, sandboxed implementation, independent validation, and durable evidence retention.
 
-`breakdown.yaml` is the sole workflow definition. Stages are contracts
-(role / decision / deterministic); roles own one SDK-native chain each and
-never persist artifacts or advance the workflow; the runtime owns
-progression, budget, recovery, approvals, and synchronization.
+## Package ownership
 
-## Stages
-
-1. `research_proposal` (auditor) → 2. `research_approval` (user) →
-3. `research_execution` (researcher) → 4. `findings_review` (auditor) →
-5. `implementation_planning` (planner, then deterministic freeze +
-preflight) → 6. `plan_approval` (user) → 7. `build_execution` (builder in
-a sandbox; deterministic detect → authorize → synchronize) →
-8. `completion` (deterministic, accepts-matrix validated).
-
-## Quickstart
-
-```bash
-uv sync --locked
-
-# Validate definition + contract alignment (offline)
-uv run --no-sync python -m breakdown --check
-
-# Offline demo run against a scratch target (no model SDK needed)
-mkdir demo-target && cd demo-target
-uv run --no-sync python -m breakdown run "Create the demo change record" \
-    --workflow ../breakdown.yaml --target . --offline-demo
-# prints: state awaiting_decision, stage research_approval, run: <id>
-
-uv run --no-sync python -m breakdown decide <id> approve --workflow ../breakdown.yaml --target . --offline-demo
-uv run --no-sync python -m breakdown resume <id> --workflow ../breakdown.yaml --target . --offline-demo
-uv run --no-sync python -m breakdown decide <id> approve --workflow ../breakdown.yaml --target . --offline-demo
-uv run --no-sync python -m breakdown resume <id> --workflow ../breakdown.yaml --target . --offline-demo
-uv run --no-sync python -m breakdown status <id> --workflow ../breakdown.yaml --target .
-# DEMO_CHANGE.md is synchronized into the target; status prints the Markdown report
+```text
+breakdown/
+├── __init__.py
+├── __main__.py
+├── tests/                         # Cross-agent, architecture and workflow tests
+├── shared/
+│   ├── base.py
+│   ├── config.py
+│   ├── models.py
+│   ├── model_loop.py
+│   └── tests/
+├── researcher/                    # agent.py, SKILL.md, tests/
+├── auditor/                       # agent.py, SKILL.md, tests/
+├── coder/                         # agent.py, SKILL.md, tests/
+├── planner/
+│   ├── agent.py
+│   ├── SKILL.md
+│   ├── tests/
+│   └── builder/                   # agent.py, SKILL.md, tests/
+└── system/
+    ├── runtime/
+    ├── storage/
+    ├── tools/
+    ├── memory.py
+    ├── safety.py
+    └── tests/
 ```
 
-Commands: `run`, `resume`, `decide`, `cancel`, `status`, `memory`, `consolidate-memory`, `bot`; `--check` is a top-level validation option.
-Mutating commands need a backend source: `--offline-demo` (scripted, no
-API) or `--live` (OpenAI-compatible API). State lives in
-`<target>/.breakdown/` (SQLite stores, gitignored); a lockfile guards
-concurrent access (`--force-unlock` takes over a known-stale lock). Every
-invocation is stateless — runs pause at approvals and resume in later
-processes.
+The five agent packages are Researcher, Auditor, Coder, Planner, and Builder. Coder is an independent package. Builder is located at `breakdown/planner/builder/` and does not use `shared/model_loop.py`.
 
-## Live mode (Databricks key or any custom API key)
+## Authority boundaries
 
-The live backends speak any OpenAI-compatible chat API — Databricks Model
-Serving, a custom gateway (LiteLLM/vLLM/Ollama-style), or OpenAI itself.
-Set the environment (see `.env.example`):
+- `breakdown/__main__.py` is the composition root and creates the agent registry.
+- `shared/` owns shared types, strict model bases, configuration schema, and shared model-loop utilities.
+- Each agent package owns its implementation, canonical `SKILL.md` instructions, and tests.
+- `system/runtime/` owns workflow orchestration, authorization, lifecycle and execution control.
+- `system/storage/` owns durable storage and checkpoint/digest mechanisms.
+- `system/tools/` owns canonical system tools and role-scoped tool access.
+- `system/safety.py` and `system/memory.py` own safety and memory behavior.
+- Root `docs/`, `evals/`, `scripts/`, `pyproject.toml`, and `uv.lock` remain repository-level resources.
 
-```bash
-# Databricks Model Serving
-export BREAKDOWN_API_BASE_URL="https://<workspace-url>/serving-endpoints/<endpoint-name>/v1"
-export BREAKDOWN_API_KEY="<databricks-pat>"
-export BREAKDOWN_MODEL="<served-model-name>"
-# Optional two-tier economics: frontier for judgment, cheaper for reading
-export BREAKDOWN_MODEL_AUDITOR="<frontier-model>"
-export BREAKDOWN_MODEL_RESEARCHER="<cheap-model>"
-```
-
-Live runs are binding-gated: first produce evaluation evidence, then
-record bindings (template: `bindings.example.json`):
-
-```bash
-uv run --no-sync python scripts/live_probe.py          # endpoint smoke test
-uv run --no-sync python evals/run.py --live            # role evaluation against the live API
-# record BackendBinding records from the evaluation, then:
-uv run --no-sync python -m breakdown run "your request" \
-    --workflow breakdown.yaml --target <repo> --live --bindings bindings.json
-```
-
-Cost attribution is per stage: `status` renders a stage-cost table, the
-completion record carries `cost_summary.by_stage`, and budget exhaustion
-records which stage spent what.
+Runtime is the authority for progression and source effects. Agents return bounded work and evidence; they do not self-advance workflow state or authorize synchronization.
 
 ## Development
 
 ```bash
-uv run --no-sync pytest -q          # tests (uses --basetemp=.pytest-tmp)
-uv run --no-sync ruff check .       # lint
-uv run --no-sync ruff format .      # format
-uv run --no-sync mypy breakdown     # strict types
-uv run --no-sync python evals/run.py --offline   # blocking-zero evals
+uv sync --locked
+uv run --no-sync python -m compileall breakdown evals scripts
+uv run --no-sync pytest -q
+uv run --no-sync ruff check .
+uv run --no-sync ruff format --check .
+uv run --no-sync mypy breakdown
+uv run --no-sync python evals/run.py --offline
 ```
 
-The offline evals score all eight blocking zeros: five through role
-contracts and semantic validators, three (`builder_unexpected_paths`,
-`builder_authoritative_repo_writes`, `builder_unauthorized_synchronization`)
-through the real safety boundary with scripted side-effect backends. A zero
-with no exercising case fails the run — zeros are proven or failing, never
-silently passing. See `evals/README.md`.
-
-## Documentation
-
-The documentation is organized by audience:
-
-- [Documentation index](docs/README.md)
-- [Architecture and integration points](docs/architecture.md)
-- [Workflow and data flow](docs/workflow.md)
-- [Onboarding and environment setup](docs/onboarding.md)
-- [Operations and common walkthroughs](docs/operations.md)
-- [Development and verification](docs/development.md)
-
-These guides describe the current implementation on main. The separate
-[target architecture and workflow](docs/current-architecture-workflow.md)
-describes the intended skill architecture and project work tree. It is not the deployed workflow or package layout.
-
-## Layout
-
-- `breakdown/` — models, contracts, engine, stores (artifacts/events/runs),
-  canonical serialization, checkpoint, safety boundary, approvals,
-  planning/completion ops, reports, roles, demo backends, CLI.
-- `breakdown.yaml` — the workflow definition (def-1 seed).
-- `tests/` — pytest suite. `evals/` — offline blocking-zero evaluation.
-- `AGENTS.md` — agent operating instructions.
-
-## Independent Verification
-
-Independent verification is **not wired into the default runtime on `main`**. Bootstrap constructs the Auditor, Researcher, Planner, and Builder workflow entries; it does not register a `verifier` backend. Consequently, `WorkflowEngine._post_build` uses Builder's own `validation_results` to compute `integration_valid`. That is self-reported evidence, not independent verification.
-
-The fallback uses `all(...)`; an empty `validation_results` list therefore evaluates as true. An empty list is not evidence that checks ran.
-
-The engine contains a verifier branch, and `tests/test_verification.py` exercises it by explicitly injecting fake verifier backends through a replacement `role_factory`. Those tests prove the injected branch, not default Bootstrap wiring or a configurable live verifier. Although `Settings` contains a `model_verifier` field, Bootstrap does not use it; `BREAKDOWN_MODEL_VERIFIER` is not an effective runtime setting.
-
-The Safety boundary independently detects changed paths. That proves neither that the implementation meets its requirements nor that independent validation ran.
-
-## Cross-Run Memory
-
-Completed runs leave durable memory behind in the target's `.breakdown/state/memory.db`. The engine writes deterministic lesson documents on run completion: `runs/<run_id>.md` for successful runs and `lessons/<run_id>.md` for failed or cancelled runs. These markdown documents are immutable versions — the input store is never modified.
-
-Three canonical tools let roles read past lessons:
-
-- `memory list [--prefix P]` — list lesson documents by path prefix
-- `memory show PATH [--revision N]` — show a specific revision of a lesson document (read-only, no lock)
-- `memory search PATTERN` — regex search against lesson document content
-
-A live-only `consolidate-memory --live [--instructions TEXT]` command merges accumulated lessons into a fresh revision without ever modifying the inputs. Without `--live`, the command prints a refusal explaining consolidation requires a live model and exits nonzero.
-
-Lesson documents can be inspected with `python -m breakdown memory list --target <target>` and `python -m breakdown memory show runs/<run_id>.md --target <target>`.
+Live model, sandbox, and external-provider behavior must be verified separately from offline tests. Report only commands that were actually run and the evidence they produced.
