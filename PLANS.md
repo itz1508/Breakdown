@@ -48,6 +48,8 @@ themselves, the current implementation plan.
 
 ## Progress
 
+- [x] (2026-11-24) Documentation task: added audience-specific architecture, workflow, onboarding, operations and development guides; linked them from README; documented current source behavior separately from proposed architecture. Docs-only change; no runtime code modified.
+
 - [x] (2026-11-17) M0 repository assessment of d:\breakdown (owners: ArtifactStore/CheckpointStore/EventStore/ReceiptStore exist; WorkflowEngine/ContractRegistry/RunStore absent; no model SDK declared; no CI/pre-commit; no persisted 8-stage runs)
 - [x] (2026-11-17) Task 0: D:\Breakdown-tmp created; git initialized; breakdown.yaml (def-1 seed) copied
 - [x] (2026-11-17) Task 1 (part 1): manifests written (pyproject.toml, .gitignore, .python-version, .env.example, AGENTS.md, breakdown/__init__.py, PLANS.md)
@@ -68,6 +70,9 @@ themselves, the current implementation plan.
 
 ## Surprises & Discoveries
 
+- (2026-11-24) Documentation source audit confirmed the executable implementation on main is still the flat breakdown/ package with breakdown/roles/ and the eight-stage breakdown.yaml. The five-role agents/ and system/ tree and independent-Coder workflow are proposals, not deployed structure. Current Bootstrap constructs Coder as an Auditor-injected code-analysis capability.
+- (2026-11-24) README, CLI, Settings, YAML and Python source are not interchangeable documentation authorities: breakdown.yaml declares stages; Python models/contracts/engine enforce them; PLANS.md records history and decisions. The new docs state these boundaries explicitly.
+
 - Observation: the def-1 seed file was renamed by the browser to `breakdown (1).yaml` between sessions; original path vanished. Evidence: Downloads search found only `breakdown (1).yaml` (20,786 bytes); copied as seed. Content verified verbatim as the def-1 clean baseline (8 stages, vocabularies, schema_validation, dependency_validation).
 - Observation: git identity in this environment is placeholder (`Test <test@example.com>`). Evidence: `git config --get user.name/email`. Consequence: fine for local history; must be corrected before any push/publication.
 - Observation: def-1 seed declares `cost_budget.on_exceeded: route completion / terminal_outcome failed`, while the workspace v7 file declared `pause_and_request_user_decision`. Evidence: both files read verbatim. Resolution: seed (def-1) governs this build; contradiction recorded, not silently discarded.
@@ -75,6 +80,10 @@ themselves, the current implementation plan.
 - Observation: seed stage 1 produces `candidate_source_responsibilities` (v7 worktree used `proposed_file_responsibilities`). Evidence: seed line 258. Models/tests use the seed's key.
 
 ## Decision Log
+
+- Decision (2026-11-24): split technical documentation by audience and purpose into docs index, architecture, workflow, onboarding, operations and development guides. Rationale: separate operator procedures from implementation architecture and keep each page maintainable.
+- Decision (2026-11-24): document current main-branch behavior separately from the proposed independent-five-role architecture. Rationale: avoid describing a target layout or workflow as already deployed; source and runtime evidence remain authoritative.
+- Decision (2026-11-24): keep PLANS.md as the existing living ExecPlan and update its required sections; do not create a second progress or execution-plan file.
 
 - Decision: Build at `D:\Breakdown-tmp` (drive root, outside the workspace repo). Rationale: user directive; zero contact with existing d:\breakdown tree; no preservation required. Date/Author: 2026-11-17 / user.
 - Decision: `git init` at the target; first commit after Phase 1 gate. Rationale: independent location (no nested-repo conflict); commit pattern approved with the plan. Date/Author: 2026-11-17 / user (plan acceptance "correct").
@@ -154,6 +163,15 @@ remain intact; fix forward, never edit tests to force success.
   constructible roles with typed operation contracts and injected capabilities.
 
 ## Outcomes & Retrospective
+
+
+### Documentation delivery (2026-11-24)
+
+- Added docs/README.md, architecture.md, workflow.md, onboarding.md, operations.md and development.md.
+- Updated README.md with a documentation index and an explicit distinction between current implementation documentation and the proposed future architecture.
+- Documented prerequisites, environment variables, offline-demo and live setup, approval/resume/status/cancel procedures, state location, major integration points, workflow stages, design trade-offs and contributor verification commands.
+- Grounded the guides in README.md, AGENTS.md, pyproject.toml, .env.example, breakdown.yaml and current Python source. No implementation files or runtime behavior were changed.
+- Validation: documentation structure, command paths and internal links were reviewed against source. Runtime tests were not run because this was a documentation-only change and no local checkout was available through the connected repository interface.
 
 ### Phase 1 delivered (2026-11-17)
 

@@ -96,6 +96,21 @@ through the real safety boundary with scripted side-effect backends. A zero
 with no exercising case fails the run — zeros are proven or failing, never
 silently passing. See `evals/README.md`.
 
+## Documentation
+
+The documentation is organized by audience:
+
+- [Documentation index](docs/README.md)
+- [Architecture and integration points](docs/architecture.md)
+- [Workflow and data flow](docs/workflow.md)
+- [Onboarding and environment setup](docs/onboarding.md)
+- [Operations and common walkthroughs](docs/operations.md)
+- [Development and verification](docs/development.md)
+
+These guides describe the current implementation on main. The separate
+[current architecture/workflow proposal](docs/current-architecture-workflow.md)
+describes a target direction and must not be mistaken for deployed behavior.
+
 ## Layout
 
 - `breakdown/` — models, contracts, engine, stores (artifacts/events/runs),
