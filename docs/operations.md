@@ -18,7 +18,7 @@ Run commands from the Breakdown project root.
 | python -m breakdown memory show PATH | Read a memory revision | No |
 | python -m breakdown bot TASK --stream | Run through the event-driven Bot wrapper and print events | Yes |
 
-Mutating commands require an explicit backend mode: --offline-demo or --live. Use --workflow, --target, --state-root and --bindings when you need to override defaults. The exact parser and flags are in breakdown/__main__.py.
+The run/resume/decide/cancel commands require --offline-demo or --live. For the Bot command, --offline-demo selects scripted backends; without it, the Bot constructs live backends and therefore needs live endpoint configuration and valid bindings. Use --workflow, --target, --state-root and --bindings when you need to override defaults. The exact parser and flags are in breakdown/__main__.py.
 
 ## Walkthrough: execute an offline run
 
