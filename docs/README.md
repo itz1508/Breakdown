@@ -20,11 +20,11 @@ When documentation conflicts with the implementation, use this authority order:
 
 1. Current source code, runtime behavior, tests, and configuration describe what is implemented.
 2. breakdown.yaml defines the executable workflow and its declared ownership, transitions, artifacts, budgets, and validation rules.
-3. PLANS.md records project decisions, historical milestones, and the living execution plan.
+3. PLANS.md is the living implementation ExecPlan and records evidence from work actually executed; it is not a generic activity log.
 4. AGENTS.md contains the repository's standing rules for workflow-execution agents.
 5. Design documents describe proposed changes only when they explicitly say so.
 
-The document [current-architecture-workflow.md](current-architecture-workflow.md) is a design proposal. It is not the currently deployed workflow or package layout.
+The document [current-architecture-workflow.md](current-architecture-workflow.md) is the **target architecture and workflow**. It is not the currently deployed workflow or package layout. `docs/workflow.md` describes the executable eight-stage workflow on `main`.
 
 ## Keep documentation maintainable
 

@@ -144,11 +144,15 @@ The safety boundary creates a run-scoped sandbox from checkpoint-listed source f
 
 Offline pytest and evals prove local contracts, deterministic operations, and scripted safety cases. They do not prove live model judgment or a production API endpoint. Live probing and evaluation are separate tasks.
 
-README documents a legacy Builder self-report fallback when an independent verifier backend is not configured. Treat that path as compatibility behavior, not independent verification. Configure and evaluate a verifier backend when independent model review is required.
+On the current `main` implementation, Bootstrap's `role_factory` returns Auditor, Researcher, Planner, and Builder; it does not register a `verifier` backend. Therefore `WorkflowEngine._post_build` computes `integration_valid` from Builder's `validation_results`. This is a self-report fallback, not independent verification. Since the implementation uses `all(...)`, an empty list also evaluates as true and must not be described as verified.
+
+`tests/test_verification.py` injects fake verifier backends by replacing `role_factory`, which exercises the engine's verifier branch in tests. It does not establish default Bootstrap wiring or make `BREAKDOWN_MODEL_VERIFIER` effective. The `model_verifier` setting is currently unwired and is intentionally omitted from operator configuration examples.
+
+The Safety boundary independently detects changed paths, but that is a path-integrity control, not an independent evaluation of implementation correctness. The target independent-validation operation is described in [Target Architecture and Workflow](current-architecture-workflow.md).
 
 ## Current implementation versus target direction
 
 - Current implementation: breakdown/ flat modules, breakdown/roles/, breakdown.yaml with eight stages, and the current Bootstrap wiring described above.
-- Proposed target: the five-role package layout and revised workflow in [Current Architecture and Workflow Proposal](current-architecture-workflow.md).
+- Proposed target: five independently dispatched agent skills, Host/Storage ownership, the revised workflow, and the project work tree in [Target Architecture and Workflow](current-architecture-workflow.md).
 
 Do not use the proposed layout as an onboarding description or claim that independent Coder dispatch is already active.

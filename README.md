@@ -40,7 +40,7 @@ uv run --no-sync python -m breakdown status <id> --workflow ../breakdown.yaml --
 # DEMO_CHANGE.md is synchronized into the target; status prints the Markdown report
 ```
 
-Commands: `run`, `resume`, `decide`, `cancel`, `status`, `--check`.
+Commands: `run`, `resume`, `decide`, `cancel`, `status`, `memory`, `consolidate-memory`, `bot`; `--check` is a top-level validation option.
 Mutating commands need a backend source: `--offline-demo` (scripted, no
 API) or `--live` (OpenAI-compatible API). State lives in
 `<target>/.breakdown/` (SQLite stores, gitignored); a lockfile guards
@@ -108,8 +108,8 @@ The documentation is organized by audience:
 - [Development and verification](docs/development.md)
 
 These guides describe the current implementation on main. The separate
-[current architecture/workflow proposal](docs/current-architecture-workflow.md)
-describes a target direction and must not be mistaken for deployed behavior.
+[target architecture and workflow](docs/current-architecture-workflow.md)
+describes the intended skill architecture and project work tree. It is not the deployed workflow or package layout.
 
 ## Layout
 
@@ -123,11 +123,13 @@ describes a target direction and must not be mistaken for deployed behavior.
 
 ## Independent Verification
 
-Synchronization authorization today depends on an independent verifier — a separate model invocation in a fresh context that receives only the rubric (the plan's `validation_steps` and `expected_result` strings) and the actual sandbox file contents, and returns per-criterion verdicts. The builder's self-report (`validation_results`) remains stored as evidence but no longer gates authorization.
+Independent verification is **not wired into the default runtime on `main`**. Bootstrap constructs the Auditor, Researcher, Planner, and Builder workflow entries; it does not register a `verifier` backend. Consequently, `WorkflowEngine._post_build` uses Builder's own `validation_results` to compute `integration_valid`. That is self-reported evidence, not independent verification.
 
-After this change, if a verifier backend is configured (via `BREAKDOWN_MODEL_VERIFIER` in `.env`), `integration_valid` inside `_post_build` is computed from the verifier's per-criterion results. If no verifier is configured, the legacy self-report path is used unchanged, preserving backward compatibility for eval fakes and existing test harnesses.
+The fallback uses `all(...)`; an empty `validation_results` list therefore evaluates as true. An empty list is not evidence that checks ran.
 
-A human can observe this behavior from the command line: a builder may claim success while the run ends `failed` because the verifier reported `not_valid` for one criterion, or the target repository contains none of the sandbox-produced files when verification rejects.
+The engine contains a verifier branch, and `tests/test_verification.py` exercises it by explicitly injecting fake verifier backends through a replacement `role_factory`. Those tests prove the injected branch, not default Bootstrap wiring or a configurable live verifier. Although `Settings` contains a `model_verifier` field, Bootstrap does not use it; `BREAKDOWN_MODEL_VERIFIER` is not an effective runtime setting.
+
+The Safety boundary independently detects changed paths. That proves neither that the implementation meets its requirements nor that independent validation ran.
 
 ## Cross-Run Memory
 

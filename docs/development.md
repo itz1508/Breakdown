@@ -7,11 +7,11 @@ For contributors changing Breakdown itself.
 1. Read AGENTS.md and the current PLANS.md ExecPlan.
 2. Inspect the physical source, tests and breakdown.yaml before proposing paths or APIs.
 3. Identify the smallest change and its protected behavior.
-4. Record the plan and key decisions in PLANS.md.
+4. For implementation work, record the executable plan and key decisions in PLANS.md. Documentation-only maintenance does not become an implementation progress entry.
 5. Implement against existing models, contracts, stores and capability interfaces.
 6. Add or update tests and offline evaluations for the behavior changed.
 7. Run the verification commands below.
-8. Update the relevant documentation and PLANS.md Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective.
+8. Update documentation affected by the change. Update PLANS.md only for actual implementation work: record real progress, evidence-backed discoveries, decisions, and outcomes; do not turn documentation-only maintenance into a retroactive execution log.
 9. Report commands actually run and any remaining not-run checks.
 
 Workflow-execution agents must not edit AGENTS.md, breakdown.yaml, PLANS.md or .breakdown/ during a normal workflow run. Repository maintenance by the owner or coding agent follows the explicit maintenance/ExecPlan process.
@@ -66,4 +66,4 @@ Review changed files for:
 
 ## Target architecture note
 
-The independent five-role package layout is recorded in docs/current-architecture-workflow.md as a proposed target. Current source still has the flat breakdown/ package and current Bootstrap wiring. Implement a migration only under a separately reviewed source-grounded plan.
+The target five-skill architecture and project work tree are recorded in docs/current-architecture-workflow.md. Current source still has the flat `breakdown/` package, the existing `breakdown/roles/` modules, and the executable eight-stage `breakdown.yaml`. Treat target paths and behavior as proposed until mapped and implemented under a separately reviewed source-grounded plan.

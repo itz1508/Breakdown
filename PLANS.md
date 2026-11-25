@@ -46,9 +46,49 @@ migrated or that the workflow has passed implementation tests. Historical
 Phase 1/2 records below document earlier repository work and are not, by
 themselves, the current implementation plan.
 
+# Breakdown — Implementation ExecPlan (PLANS.md)
+
+Living implementation ExecPlan. Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective record actual implementation work and evidence. Do not use this file as a generic activity log or retrospectively record documentation-only maintenance as implementation execution.
+
+## Current Purpose / Big Picture
+
+The intended Breakdown workflow is:
+
+```text
+Session Start or Run
+→ actual User Input
+→ Auditor prepares discovery.json and previews its revision
+→ every edit creates a preserved revision and a changed-content preview
+→ Accept & Check validates the exact submitted specification
+→ material issue returns to clarification/edit and another Accept & Check
+→ Researcher investigates accepted research items
+→ Auditor performs post-research evidence comparison and repository review
+→ Planning: code review, refactor design, Koder when explicitly required,
+  fixture definitions, Scanner final gap analysis, Implementation Plan, TaskTodo
+→ User Review & Approval binds the exact plan revision + source checkpoint
+→ Runtime confirmation and hash verification
+→ Builder executes approved TaskTodo in the authorized sandbox, exports results,
+  and exits
+→ Host invokes the independent verify_all() utility
+→ Completion and retention
+```
+
+Declining the specification completes without Research or Build. Declining the approved plan completes without Builder. There is no additional approval gate before Research and no second user-approval gate.
+
+The project work tree is separate from runtime workflow progression:
+
+```text
+Project → Phases → File-level Tasks → 1–3 To-do guidance steps
+```
+
+For substantial projects, roughly 10 phases with roughly 10 tasks each (about 100 tasks) is a planning scale, not a quota or a flat workflow. One task owns one target file. An agent may own multiple file tasks (often 5–10 depending on complexity/capability); independent tasks should run concurrently, normally targeting at least five concurrent file tasks when available. One active writer per file; honor real dependencies; do not add dependency waves, batches, deferred queues, or artificial phase barriers.
+
+**Architecture target:** five independently dispatched agent skills—Auditor, Researcher, Planner, Koder, and Builder. Host owns orchestration and authority; Storage owns durable persistence. Host invokes the separate `skills/verify_all.py` utility after Builder export/exit. The existing `breakdown/` source layout and eight-stage `breakdown.yaml` remain the executable implementation on `main` until a separately reviewed migration is implemented.
+
+**Status:** target behavior is documented separately from current implementation. Do not infer that the runtime has been migrated or that the target workflow has passed implementation tests.
+
 ## Progress
 
-- [x] (2026-11-24) Documentation task: added audience-specific architecture, workflow, onboarding, operations and development guides; linked them from README; documented current source behavior separately from proposed architecture. Docs-only change; no runtime code modified.
 
 - [x] (2026-11-17) M0 repository assessment of d:\breakdown (owners: ArtifactStore/CheckpointStore/EventStore/ReceiptStore exist; WorkflowEngine/ContractRegistry/RunStore absent; no model SDK declared; no CI/pre-commit; no persisted 8-stage runs)
 - [x] (2026-11-17) Task 0: D:\Breakdown-tmp created; git initialized; breakdown.yaml (def-1 seed) copied
@@ -70,7 +110,7 @@ themselves, the current implementation plan.
 
 ## Surprises & Discoveries
 
-- (2026-11-24) Documentation source audit confirmed the executable implementation on main is still the flat breakdown/ package with breakdown/roles/ and the eight-stage breakdown.yaml. The five-role agents/ and system/ tree and independent-Coder workflow are proposals, not deployed structure. Current Bootstrap constructs Coder as an Auditor-injected code-analysis capability.
+- (2026-11-24) Source audit confirmed the executable implementation on main is the flat breakdown/ package, breakdown/roles/, and the eight-stage breakdown.yaml. Bootstrap constructs Coder as an Auditor-injected code-analysis capability and does not register a Verifier backend. The target skill tree and revised workflow are proposals, not deployed structure.
 - (2026-11-24) README, CLI, Settings, YAML and Python source are not interchangeable documentation authorities: breakdown.yaml declares stages; Python models/contracts/engine enforce them; PLANS.md records history and decisions. The new docs state these boundaries explicitly.
 
 - Observation: the def-1 seed file was renamed by the browser to `breakdown (1).yaml` between sessions; original path vanished. Evidence: Downloads search found only `breakdown (1).yaml` (20,786 bytes); copied as seed. Content verified verbatim as the def-1 clean baseline (8 stages, vocabularies, schema_validation, dependency_validation).
@@ -81,8 +121,6 @@ themselves, the current implementation plan.
 
 ## Decision Log
 
-- Decision (2026-11-24): split technical documentation by audience and purpose into docs index, architecture, workflow, onboarding, operations and development guides. Rationale: separate operator procedures from implementation architecture and keep each page maintainable.
-- Decision (2026-11-24): document current main-branch behavior separately from the proposed independent-five-role architecture. Rationale: avoid describing a target layout or workflow as already deployed; source and runtime evidence remain authoritative.
 - Decision (2026-11-24): keep PLANS.md as the existing living ExecPlan and update its required sections; do not create a second progress or execution-plan file.
 
 - Decision: Build at `D:\Breakdown-tmp` (drive root, outside the workspace repo). Rationale: user directive; zero contact with existing d:\breakdown tree; no preservation required. Date/Author: 2026-11-17 / user.
@@ -98,7 +136,7 @@ themselves, the current implementation plan.
 
 ## Context and Orientation
 
-- `docs/current-architecture-workflow.md` — canonical current target architecture and end-to-end workflow.
+- `docs/current-architecture-workflow.md` — target skill architecture, runtime workflow, and project work-tree model; not current deployed behavior.
 - `PLANS.md` — living project history and milestone record. Older task plans and test counts are historical unless revalidated against current source.
 - Current code, runtime behavior, tests, and configuration take precedence over stale descriptions in older documentation.
 - Repository target: `itz1508/Breakdown`, branch `main`.
@@ -106,20 +144,41 @@ themselves, the current implementation plan.
 
 ## Current Plan of Work
 
-The next implementation step is a source-rechecked migration plan against the
-current `main` branch. It must identify the existing source owner for each
-target module, preserve current contracts and persistence, define incremental
-moves, and name behavioral/layering tests. Do not resume the historical T0–T9
-sequence below as though it were the current plan.
+The next implementation work is a source-rechecked migration plan against the
+current `main` branch. It must identify the existing source owner for every
+target module and contract, preserve current behavior/persistence, and separate
+behavioral changes from file moves. This documentation update does not start
+that migration.
+
+Planning/decomposition rules for that implementation plan:
+
+- Build a project work tree of meaningful phases and file-level tasks.
+- A substantial project commonly uses about 10 phases with about 10 tasks each;
+  this is a planning scale, not a fixed task quota.
+- Each implementation task owns one target file and contains 1–3 concise To-do
+  guidance steps, followed by focused verification and a recorded result.
+- One agent can own several file tasks (commonly 5–10 files, depending on
+  capability and complexity). Target at least five independent concurrent file
+  tasks when the scope permits.
+- Use one active writer per file; establish shared contracts before dependent
+  parallel changes. Do not invent files to hit a task count.
+- Runtime workflow phases are not the same thing as project work phases.
+- Do not add Stage Plans for each micro-task, deferred queues, dependency waves,
+  batches, or artificial phase barriers.
 
 Required planning order:
 
 1. Inspect current source, runtime, tests, configuration, and dependency wiring.
-2. Map existing models, roles, backends, Storage, tools, sandbox, and workflow operations to the target architecture.
-3. Identify contract or behavior changes separately from file moves.
-4. Define migration steps and rollback/recovery boundaries.
-5. Add cross-agent contract and import-layering tests before deleting legacy owners.
-6. Implement only under a separately reviewed and approved plan.
+2. Map existing models, skills, backends, Storage, MCP tools, hooks, sandbox,
+   and workflow operations to the target architecture.
+3. Build the file-level task tree from actual source and required changes.
+4. Separate contract/behavior changes from file moves and identify real task
+   dependencies and parallel-safe ownership.
+5. Define migration steps, rollback/recovery boundaries, and focused tests.
+6. Review the implementation plan and task tree before implementation.
+7. Implement only after explicit approval.
+
+
 
 ## Historical Phase 1 Validation and Acceptance
 
@@ -159,19 +218,12 @@ remain intact; fix forward, never edit tests to force success.
 - `breakdown.engine`: load_workflow, forward-edge (graphlib) and loop-back
   validation, resolve_next.
 - `breakdown.tools`: capability_inspect, source_search, source_read.
-- Agent roles: Researcher, Auditor, Coder, Planner, and Builder — independently
-  constructible roles with typed operation contracts and injected capabilities.
+- Agent roles in the November 17 implementation: Researcher, Auditor, Coder,
+  Planner, and Builder. The target architecture uses independently dispatched
+  Auditor, Researcher, Planner, Koder, and Builder skills.
 
 ## Outcomes & Retrospective
 
-
-### Documentation delivery (2026-11-24)
-
-- Added docs/README.md, architecture.md, workflow.md, onboarding.md, operations.md and development.md.
-- Updated README.md with a documentation index and an explicit distinction between current implementation documentation and the proposed future architecture.
-- Documented prerequisites, environment variables, offline-demo and live setup, approval/resume/status/cancel procedures, state location, major integration points, workflow stages, design trade-offs and contributor verification commands.
-- Grounded the guides in README.md, AGENTS.md, pyproject.toml, .env.example, breakdown.yaml and current Python source. No implementation files or runtime behavior were changed.
-- Validation: documentation structure, command paths and internal links were reviewed against source. Runtime tests were not run because this was a documentation-only change and no local checkout was available through the connected repository interface.
 
 ### Phase 1 delivered (2026-11-17)
 

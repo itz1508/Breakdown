@@ -51,7 +51,6 @@ Common settings:
 | BREAKDOWN_MODEL_RESEARCHER | Researcher model override | default model |
 | BREAKDOWN_MODEL_CODER | Coder capability model override | default model |
 | BREAKDOWN_MODEL_PLANNER | Planner model override | default model |
-| BREAKDOWN_MODEL_VERIFIER | Verifier model override | default model |
 | BREAKDOWN_API_MAX_TOOL_ROUNDS | Maximum live tool rounds | 8 |
 
 For offline-demo mode, no .env file or API credentials are required. For live mode, copy .env.example to an untracked .env and set only the values required by your endpoint. Never commit real credentials.
