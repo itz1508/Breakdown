@@ -65,7 +65,7 @@ Observable behaviors:
 ## 3. Progress
 
 - [x] (2026-11-19) Gap analysis conducted against 7 cookbook sources, `breakdown.yaml`, and codebase.
-- [x] (2026-11-19) Decision D39 recorded in `PLANS.md`; Decisions D40, D41, D43 adopted.
+- [x] (2026-11-19) Decision D39 recorded on 2026-11-19; Decisions D40, D41, D43 adopted.
 - [x] Task 1: Data models expansion (`BaselineMap`, `ScaffoldingEntry`, updated `NormalizedEvidence`, updated `ResearchRecord` in `breakdown/models.py`).
 - [x] Task 2: Semantic search tool implementation (`breakdown/semantic_search.py`) with hybrid offline fallback and canonical tool registry registration (`TOOLS["semantic_search"]`).
 - [x] Task 3: Researcher autonomous engine (`breakdown/roles/researcher.py`) with AST baseline mapping, evidence normalization, and provenance validation.

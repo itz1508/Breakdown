@@ -4,17 +4,17 @@ For contributors changing Breakdown itself.
 
 ## Repository workflow
 
-1. Read AGENTS.md and the current PLANS.md ExecPlan.
+1. Read AGENTS.md and the relevant current architecture/workflow documents.
 2. Inspect the physical source, tests and breakdown.yaml before proposing paths or APIs.
 3. Identify the smallest change and its protected behavior.
-4. For implementation work, record the executable plan and key decisions in PLANS.md. Documentation-only maintenance does not become an implementation progress entry.
+4. For implementation work, record the approved task scope and key decisions in the associated GitHub pull request and relevant design/migration document. Documentation-only maintenance does not require a separate progress entry.
 5. Implement against existing models, contracts, stores and capability interfaces.
 6. Add or update tests and offline evaluations for the behavior changed.
 7. Run the verification commands below.
-8. Update documentation affected by the change. Update PLANS.md only for actual implementation work: record real progress, evidence-backed discoveries, decisions, and outcomes; do not turn documentation-only maintenance into a retroactive execution log.
+8. Update documentation affected by the change. Record actual implementation progress, evidence-backed discoveries, decisions, verification, and outcomes in the associated pull request and commit history. Do not create a separate root-level planning journal or turn documentation-only maintenance into a retroactive execution log.
 9. Report commands actually run and any remaining not-run checks.
 
-Workflow-execution agents must not edit AGENTS.md, breakdown.yaml, PLANS.md or .breakdown/ during a normal workflow run. Repository maintenance by the owner or coding agent follows the explicit maintenance/ExecPlan process.
+Workflow-execution agents must not edit AGENTS.md, breakdown.yaml, or .breakdown/ during a normal workflow run.
 
 ## Source map for common changes
 

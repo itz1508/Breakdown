@@ -123,11 +123,7 @@ A challenge names the finding, evidence, and effect on user intent. A review com
 
 ## 6. Records and reports
 
-Planner keeps every record. Other agents provide evidence and do not edit an approved definition.
-
-### Living ExecPlan
-
-Keep one `PLANS.md` ExecPlan. Its four required sections are Progress; Surprises & Discoveries with evidence snippets; Decision Log; and Outcomes & Retrospective.
+Planner owns the project task tree and planning decisions. Other agents provide evidence and do not edit an approved definition. Durable task state and evidence stay with their task/workflow artifacts. Source-change scope, decisions, verification, and outcomes are recorded in the associated GitHub pull request and commit history. Do not maintain a separate root-level planning journal or duplicate progress ledger.
 
 ### Feature status
 

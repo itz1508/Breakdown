@@ -20,9 +20,9 @@ When documentation conflicts with the implementation, use this authority order:
 
 1. Current source code, runtime behavior, tests, and configuration describe what is implemented.
 2. breakdown.yaml defines the executable workflow and its declared ownership, transitions, artifacts, budgets, and validation rules.
-3. PLANS.md is the living implementation ExecPlan and records evidence from work actually executed; it is not a generic activity log.
-4. AGENTS.md contains the repository's standing rules for workflow-execution agents.
-5. Design documents describe proposed changes only when they explicitly say so.
+3. AGENTS.md contains the repository's standing rules for workflow-execution agents.
+4. Design documents describe proposed changes only when they explicitly say so.
+5. GitHub pull requests and commit history record implementation scope, decisions, verification evidence, and source-change history; they do not override executable source or configuration.
 
 The document [current-architecture-workflow.md](current-architecture-workflow.md) is the **latest four-agent target architecture and workflow**. It is not the currently deployed workflow or package layout. [structure-migration.md](structure-migration.md) records the source-owner map and migration sequence; [structure-gap-review.md](structure-gap-review.md) records the gap review. `docs/workflow.md` describes the executable eight-stage workflow on `main`.
 
@@ -32,4 +32,4 @@ The document [current-architecture-workflow.md](current-architecture-workflow.md
 - Link to source files instead of copying long implementation details.
 - Use exact commands from the project configuration and CLI.
 - Mark behavior as implemented, proposed, or unverified. Never describe a target tree as the current source tree.
-- Keep PLANS.md as the living project record. Do not add a competing progress file.
+- Keep task state and evidence with the task/workflow artifacts; use the associated pull request and commits for implementation decisions and verification history. Do not create a competing root-level planning journal.

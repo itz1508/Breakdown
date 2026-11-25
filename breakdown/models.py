@@ -37,7 +37,6 @@ PROTECTED_PATHS = frozenset(
         "agents",
         "breakdown.yaml",
         "AGENTS.md",
-        "PLANS.md",
         "pyproject.toml",
         "uv.lock",
     }

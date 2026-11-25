@@ -118,8 +118,7 @@ describes the intended skill architecture and project work tree. It is not the d
   planning/completion ops, reports, roles, demo backends, CLI.
 - `breakdown.yaml` — the workflow definition (def-1 seed).
 - `tests/` — pytest suite. `evals/` — offline blocking-zero evaluation.
-- `PLANS.md` — execution plan and milestone record. `AGENTS.md` — agent
-  operating instructions.
+- `AGENTS.md` — agent operating instructions.
 
 ## Independent Verification
 

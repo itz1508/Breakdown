@@ -16,7 +16,7 @@ No production Python files, tests, executable configuration, or legacy paths wer
 
 | ID | Severity | Gap found | Correction |
 |---|---|---|---|
-| G-01 | High | `PLANS.md` had a `Current Architecture and Workflow Record` section presenting the old five-role architecture as active and saying Coder-under-Auditor was superseded. | Replaced the stale current-design section with the latest four-agent target and corrected feature-list/browser-verification wording. |
+| G-01 | High | The former root project record had a `Current Architecture and Workflow Record` section presenting the old five-role architecture as active and saying Coder-under-Auditor was superseded. | Replaced the stale current-design section with the latest four-agent target and corrected feature-list/browser-verification wording. |
 | G-02 | High | The migration objective implied that the entire latest workflow could be obtained by behavior-preserving file moves. Current source is an eight-stage workflow; the target has specification revision/Accept & Check, accepted-item research, Auditor comparison, TaskTodo planning, exact package confirmation, Builder export/exit, independent validation, and retention. | Split pure package relocation from explicit workflow/state/schema replacement. The old runtime remains active until the new model, transitions, gates, and persistence are wired and tested. |
 | G-03 | High | The source-owner map put all of `breakdown/roles/__init__.py` into `agents/loop.py`. That file includes `RoleToolkit` capability grants and dispatch, not only prompt/structured-output helpers. | Split pure loop/render/structured-output helpers into `agents/loop.py`; place RoleToolkit, grants, and dispatch on the System tools boundary. |
 | G-04 | High | The target lacked the agreed shared `TaskTodo` work representation and did not call out the current `BuildTask`/ImplementationPlan conversion. | Added `shared/queue/TaskTodo` as the shared representation and made BuildTask-to-TaskTodo an explicit schema/behavior conversion. No scheduler, deferred queue, wave, or batch abstraction is authorized. |
@@ -46,7 +46,7 @@ These are not documentation defects and were not marked completed:
 ## Verification performed
 
 - Inspected the GitHub recursive tree and confirmed the existing source layout, root test inventory, top-level skill files, and current workflow/config references.
-- Re-read the target architecture, migration map, PLANS.md, current architecture docs, and the historical Researcher ExecPlan.
+- Re-read the target architecture, migration map, former root project record, current architecture docs, and the historical Researcher ExecPlan.
 - Compared current target decisions with the November 24 workflow/layout source and the YAML-docstring prototype findings.
 - No runtime commands or test suite were run: this pass changes design/migration documentation only.
 - No live model, sandbox, Strands, browser UI, or production repository execution was performed.
