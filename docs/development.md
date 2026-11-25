@@ -66,4 +66,4 @@ Review changed files for:
 
 ## Target architecture note
 
-The latest four-agent target architecture and project work tree are recorded in docs/current-architecture-workflow.md; the source-owner map and consolidation gates are in docs/structure-migration.md. Current source still has the flat `breakdown/` package, `breakdown/roles/`, top-level `agents/skills/`, root `tests/`, and the executable eight-stage `breakdown.yaml`. Treat target paths as proposed until each owner is moved, every consumer is repointed, and the relevant checks pass.
+The latest four-agent target architecture and project work tree are recorded in docs/current-architecture-workflow.md; the source-owner map, workflow/schema migration, and consolidation gates are in docs/structure-migration.md. Current source still has the flat `breakdown/` package, `breakdown/roles/`, top-level `agents/skills/`, root `tests/`, and the executable eight-stage `breakdown.yaml`. Keep those current consumers intact until the new definitions/runtime are wired; the target workflow is a separate behavior migration, not just a package move.

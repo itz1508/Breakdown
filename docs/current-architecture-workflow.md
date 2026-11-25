@@ -21,7 +21,7 @@ Do not add a second controller, scheduler, storage system, or competing progress
 
 ## 2. Stage contract
 
-Every stage opens with a recorded plan, runs only that plan, proves its results with evidence, and hands off through a gate.
+Every stage opens with a recorded plan, runs only that plan, proves its results with evidence, and hands off through a gate. The project work tree is Project → Phases → Tasks → each Task's small To-do (typically 1–3 guidance steps). Tasks are completed individually; dependencies determine ordering and independent tasks can proceed concurrently. `TaskTodo` is the shared work representation, not a deferred scheduler, wave engine, batch queue, or phase barrier.
 
 1. **Entry check.** Inputs are present with their digests, tools and sources are reachable, and the authority for each claim is identified. The result is `valid` (proceed), `uncertainty` (a bounded part can proceed; name the exact unsupported part), or `blocked`. Difficulty alone never blocks.
 2. **Plan.** Write the phase plan, then the task to-do, before any action. The Builder's plan is the confirmed to-do list the Planner wrote: it cannot add, reorder, or skip a task.
@@ -65,13 +65,13 @@ Coder is a read-only supporting capability inside Auditor for bounded code inter
 
 Researcher investigates accepted research questions and patterns. It inspects actual source before recommending changes, researches official patterns when external technical knowledge is required, compares observed implementation with applicable patterns, distinguishes defects from optional improvements and unknowns, and preserves contradictions.
 
-Before research, it breaks the request into concepts, entities and relationships; facts or data needed; time/context constraints; user priorities; and required answer form. It states the perspectives to cover and how findings will be synthesized, scaled to the task. Code-referenced but unprovided inputs are reported as `missing_context`.
+**PROPOSAL:** before research, break the request into concepts, entities and relationships; facts or data needed; time/context constraints; user priorities; and required answer form. State the perspectives to cover and how findings will be synthesized, scaled to the task. Code-referenced but unprovided inputs are reported as `missing_context`.
 
 ### Planner
 
 Planner owns the phase plan, task to-do, gap analysis, design decisions, and approved work record.
 
-Its order is: write the phase to-do with all requirements for a usable result; review code proposals against the four criteria and their Verification sections; analyze and fix gaps; run the final gap/chaos review; create the to-do; hash it; and run preflight.
+Its order is: write the phase to-do first. It identifies everything the finished result needs to work and be usable: components, files, modules, dependencies, installation requirements, configurations, interfaces, inputs, outputs, behaviors, and applicable standards. Review each code proposal against the four criteria and its Verification section; analyze and fix gaps; scan and verify everything for the chaos test; when valid, create the to-do list; hash it; and run preflight.
 
 A task's proposed fields are: id, traced requirement, objective, protected behavior, scope boundary, steps, verification command and expected result, expected failure behavior, and observable success. The plan does not prescribe unverified files, folders, APIs, schemas, dependencies, or architecture.
 
@@ -79,7 +79,7 @@ A task's proposed fields are: id, traced requirement, objective, protected behav
 
 Builder executes the confirmed to-do in order, inside the authorized sandbox. It does not add, reorder, or skip tasks and does not invent host capabilities.
 
-The decided sequence is: verify the confirmed hash, create the sandbox, execute as written and in order, exit the sandbox, synchronize the authorized result back to main, and finish. The proposal for failure handling is to extract partial output, exit without synchronization, and return to Planner; this remains a proposal until accepted.
+The decided sequence is: verify the confirmed hash, create the sandbox, execute as written and in order, exit the sandbox, synchronize the authorized result back to main, and finish. **PROPOSAL:** on failure, extract partial output, exit without synchronization, and return to Planner; this remains a proposal until accepted.
 
 ## 5. Rules applied in every stage
 
@@ -115,11 +115,11 @@ Validation tests the user's intent: intent, method, expected result, observed re
 
 ### Proposal review and challenge
 
-Planner reviews code proposals against outcome/task completion, reliability, groundedness/policy adherence, and cost/speed. Each proposal carries a Verification section with setup, lint, test, and build commands filled from the repository. Commands must be verified before use. Cost and speed are information, not authority to weaken evidence or authorization.
+Planner reviews code proposals against four criteria: outcome and task completion; reliability; groundedness and policy adherence; and cost and speed. Each proposal carries a Verification section with setup, lint, test, and build commands filled from the repository. Commands must be verified before use. **PROPOSAL:** split each criterion into plan-time checks and run-time measures; treat cost and speed as information only (the Builder is sequential by decision); try commands during preflight in read-only mode or a disposable copy, never on main.
 
 A finding states the issue, evidence, reference source, and effect on user intent. A correction draft states the smallest correction, behavior to preserve, verification required, and work that must not be introduced. When no correction is needed, no correction plan is written.
 
-A challenge names the finding, evidence, and effect on user intent. The receiving agent may answer with contrary repository evidence, a missing constraint, or a smaller correction. Evidence settles disagreement, not confidence. Challenge-round limits remain open.
+A challenge names the finding, evidence, and effect on user intent. A review comment records severity (`CRITICAL`, `IMPORTANT`, or `SUGGESTION`), file and line, issue, fix, and reference. The receiving agent may answer with contrary repository evidence, a missing constraint, or a smaller correction. Evidence settles disagreement, not confidence. Challenge-round limits remain open.
 
 ## 6. Records and reports
 
@@ -133,15 +133,15 @@ Keep one `PLANS.md` ExecPlan. Its four required sections are Progress; Surprises
 
 `feature_list.json` is the approved definition. Tests are never removed, edited, reordered, or combined. Features with a UI are verified in the actual UI through a real browser: click, type, scroll, capture a screenshot at each step, and inspect console errors. Curl-only testing and JavaScript shortcuts do not count for UI verification.
 
-The proposed mutable status values are `not_run`, `completed`, `failed`, `blocked`, and `skipped`; status is excluded from the approval digest. Only the Auditor's valid verdict sets `completed`, written by Runtime once evidence files exist and are hashed. A feature declares a verification surface (`ui`, `api`, `cli`, or `library`); the browser rule applies to `ui`.
+**PROPOSAL:** replace the feature's boolean `passes` with one mutable `status` field using `not_run`, `completed`, `failed`, `blocked`, or `skipped`; exclude `status` from the approval digest. Only the Auditor's valid verdict would set `completed`, written by Runtime once evidence files exist and are hashed. Each feature would declare a verification surface (`ui`, `api`, `cli`, or `library`); the browser rule applies to `ui`.
 
 ### Progress, handoff, and missing context
 
-The progress file is named `work-progress`, set once in configuration. Counts are computed from feature statuses, never hand-written.
+The progress file is named `work-progress`, set once in configuration. **PROPOSAL:** compute counts from feature statuses; never hand-write them.
 
-The handoff uses one shared shape: `agent`, `status`, `input_refs`, `output_refs`, `resume_at`, and `questions`. Artifact identifiers/digests, request id, attempt, and the final status vocabulary require the decisions recorded in the open-decision list below.
+**UNDER REVIEW:** the shared handoff shape is `agent`, `status`, `input_refs`, `output_refs`, `resume_at`, and `questions`. Renaming the earlier first field `role` to `agent` is an **ASSUMPTION**, not a confirmed decision. **PROPOSAL:** artifact references carry an artifact id and SHA-256 digest; add `request_id` and `attempt`; and use a closed status enum with no approval field. The final shape and status vocabulary remain open.
 
-`missing_context` records a target identifier and reason for a referenced file or symbol that the input did not include, and why it is needed. The proposed schema requires the field (empty list means checked and none missing), rejects extra keys and empty strings, and records id, kind (`file` or `symbol`), `referenced_from`, and `blocks`. Runtime checks each entry against the supplied manifest and repository. Cross-agent Pydantic schemas live in `shared/models.py`; the SDK strips some constraints, so Pydantic re-validates every response.
+`missing_context` records a `target_identifier` and `reason`: the referenced file path or symbol that the input did not include, and why it is needed. **PROPOSAL:** require the field (`[]` means checked and nothing is missing), reject extra keys and empty strings, and add `id`, `kind` (`file` or `symbol`), `referenced_from`, and `blocks`. Runtime checks each entry against the supplied manifest and repository. Cross-agent Pydantic schemas live in `shared/models.py`; the SDK strips some constraints, so Pydantic re-validates every response.
 
 ### Stage report
 
@@ -161,6 +161,7 @@ breakdown/
 │   ├── base.py
 │   ├── models.py
 │   ├── config.py
+│   ├── queue/                    # TaskTodo: shared work representation, not a scheduler
 │   └── tests/
 ├── agents/
 │   ├── __init__.py              # explicit imports; no import-time construction
@@ -194,25 +195,31 @@ breakdown/
     └── tests/
 ```
 
-Decided boundaries: `shared/` is a sibling of `agents/` and `system/`; there is one `__main__.py` at `breakdown/`; each agent folder owns its `agent.py` and tests; Coder is inside Auditor; no separate `host/` or `contracts/` directory is introduced in this layout discussion.
+The five layout choices marked decided are: `shared/` is a sibling of `agents/` and `system/`; there is one `__main__.py` at `breakdown/` and none elsewhere; `agents/` has no root `agent.py`, while each agent folder has its own `agent.py`; each agent owns its tests; and `host/` and `contracts/` are not part of this layout discussion. Coder remains inside Auditor under the latest four-agent ownership decision. The shown `tests/` spelling is provisional while the directory-convention decision remains open.
 
 ### YAML agent definition in Python
 
 Each agent's `agent.py` starts with a YAML module docstring, followed by ordinary Python implementation. The docstring must be the first module statement, before `from __future__ import annotations`, so AST discovery cannot silently lose it when imports are reordered.
 
-The YAML definition describes agent identity, purpose, instructions, input-contract name, and response-contract name. The Python implementation defines behavior. The YAML is parsed with a safe loader that rejects duplicate keys, then validated against a strict Pydantic definition schema. The agent id must match its containing folder. Contract references must resolve to the intended classes in `shared/models.py` and satisfy the shared strict-model rule. Definition discovery uses AST and does not import or execute the implementation module.
+The YAML definition describes agent identity, purpose, instructions, input-contract name, and response-contract name. The shared definition schema uses a general `id: str`, not a per-agent `Literal`; Runtime checks that the id matches the containing folder and registered agent identity. The Python implementation defines behavior. Parse the YAML with a duplicate-key-rejecting subclass of `yaml.SafeLoader`; `yaml.safe_load()` alone silently accepts duplicate keys. Validate the result with a Pydantic definition model configured with `extra="forbid"` and `strict=True`. The agent id must match its containing folder. Resolve each contract reference statically with AST: an agent-private contract may be defined in that agent's `agent.py`; a contract crossing an agent boundary must be defined in `shared/models.py`. In either case, verify that the referenced class exists and inherits from the shared strict base. Do not import a module merely to discover a definition. Definition discovery extracts the first module docstring through AST and never executes the implementation.
 
-The YAML instructions are the canonical agent instructions. Do not keep a separately hand-maintained `SKILL.md` or duplicate the same instructions in another prompt constant. A generated view is allowed only when a consumer demonstrably requires it.
+The YAML instructions are the canonical agent instructions and the source fed into the agent's system prompt. Do not keep a separately hand-maintained `SKILL.md` or duplicate the same instructions in `_AUDITOR_BRIEF`-style prompt constants. `agents/prompt.py` may format or assemble prompt sections, but it must not become a second instruction store. A generated `SKILL.md` view is allowed only when a consumer demonstrably requires it.
 
 Definition metadata does not authorize execution. Runtime owns dispatch, approval checks, permissions, workflow transitions, and enforcement. Importing an agent module must not instantiate agents, read credentials, open Storage, or perform external work. `__main__.py` constructs the four agents and injects them into Runtime.
 
 ### Dependency direction
+
+**PROPOSAL (dependency rule):**
 
 - `shared/` imports nothing from `agents/` or `system/`.
 - `system/` never imports `agents/`.
 - Agents import `shared/` and authorized `system/` capabilities, but do not import sibling agents.
 - `__main__.py` is the composition root and hands the constructed agents to Runtime.
 - Agent instances are created at application construction, not at import time.
+
+### Work representation
+
+`shared/queue/TaskTodo` is the shared to-do representation. It is not a scheduling subsystem: do not introduce deferred queues, BuildBatch/BuildWave abstractions, wave barriers, or a second scheduling authority. The project work tree may express dependencies, but processing remains immediate and task-scoped.
 
 ## 8. Evidence and migration limits
 
@@ -227,9 +234,9 @@ The following remain open unless a later accepted Decision Log entry resolves th
 3. Whether a corrected to-do within the same approved scope requires new confirmation.
 4. Correction-loop and challenge-round caps.
 5. Whether existing Markdown research/plan files carry into the rebuild alongside JSON records.
-6. Whether `memory.py` owns run records or model context (persistence remains under the single Storage owner).
+6. What `memory.py` owns: run records or model context. Its target path in the proposed tree does not settle its semantics or make it a second run store.
 7. Jobs for `coding.py` and `openai_compatible.py`; keep them out until justified by source.
-8. Test directory convention (`tests/` versus `test/`); target currently uses `tests/`.
+8. Test directory convention (`tests/` versus `test/`); the illustrative tree uses `tests/`, but the decision remains open.
 9. Exact location and interface for the independent `verify_all()` operation.
 10. Final shared handoff shape, including artifact provenance fields.
-11. The code migration's final target branch and merge procedure.
+11. The code migration's final target branch and merge procedure. The current review branch is `migration/latest-four-agent-layout`, with `main` as the PR base; this does not pre-approve merging.

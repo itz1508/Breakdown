@@ -25,7 +25,7 @@ User input
 → assemble/hash exact package
 → user confirms exact package
 → Builder verifies hashes/source preconditions
-→ authorized sandbox and asynchronous TaskTodo execution
+→ authorized sandbox and confirmed TaskTodo execution
 → assigned checks, evidence retention, synchronization, and Builder outputs
 → sandbox exit
 → Completion records the evidence-supported outcome
@@ -42,7 +42,8 @@ recovery, and tests are in the linked workflow document.
 
 ## Progress
 
-- [x] (2026-11-25) Source-rechecked the GitHub baseline at `71218fe820208ff3b5e6118ea5c017568f7a5a73`; created `migration/latest-four-agent-layout`; recorded the four-agent target and source-owner migration map in `docs/structure-migration.md`. Documentation only; runtime source remains unmoved.
+- [x] (2026-11-25) Source-rechecked the GitHub baseline at `71218fe820208ff3b5e6118ea5c017568f7a5a73`; created `migration/latest-four-agent-layout`; recorded the four-agent target and source-owner migration map in `docs/structure-migration.md`.
+- [x] (2026-11-25) Ran a gap review against the latest workflow, current repository tree/configuration, and prior architecture notes; corrected proposal/decision labels, stale Coder/five-role wording, ToolKit ownership, TaskTodo/workflow migration, test relocation, and YAML-docstring validation requirements. No production source was moved in this documentation pass.
 
 - [x] (2026-11-17) M0 repository assessment of d:\breakdown (owners: ArtifactStore/CheckpointStore/EventStore/ReceiptStore exist; WorkflowEngine/ContractRegistry/RunStore absent; no model SDK declared; no CI/pre-commit; no persisted 8-stage runs)
 - [x] (2026-11-17) Task 0: D:\Breakdown-tmp created; git initialized; breakdown.yaml (def-1 seed) copied
@@ -65,7 +66,9 @@ recovery, and tests are in the linked workflow document.
 ## Surprises & Discoveries
 
 - (2026-11-25) GitHub `main` is `itz1508/Breakdown` (default branch `main`, not `master`). The package tree still contains `breakdown/roles/`, flat `breakdown/*.py` modules, top-level `agents/skills/*/SKILL.md`, and root `tests/`. Imports also appear in evals, scripts, the CLI, and `breakdown.yaml`; deleting old directories before migrating those consumers would break the package. The initial source-owner map is recorded in `docs/structure-migration.md`.
-- (2026-11-25) The latest target has four agents, not five independent skills: Coder remains an Auditor-owned read-only capability. Earlier five-skill target text is superseded by the new target document.
+- (2026-11-25) Gap review found the old `Current Architecture and Workflow Record` section in `PLANS.md` describing the five-role target, saying Coder-under-Auditor was superseded, and rejecting `feature_list.json`/browser verification. That section was rewritten to point to the November 25 four-agent target.
+- (2026-11-25) The package migration is not behavior-preserving end-to-end: the current repository runs an eight-stage definition with `BuildTask`, while the latest target uses specification review/Accept & Check, package confirmation, and `TaskTodo`. Package moves and workflow/state conversion must be separate implementation workstreams.
+- (2026-11-25) `RoleToolkit` combines capability authorization/dispatch with role-loop helpers. Moving the entire current `breakdown/roles/__init__.py` into `agents/loop.py` would move authorization into the agent layer; the migration map now splits these owners.
 
 - (2026-11-24) Source audit confirmed the executable implementation on main is the flat breakdown/ package, breakdown/roles/, and the eight-stage breakdown.yaml. Bootstrap constructs Coder as an Auditor-injected code-analysis capability and does not register a Verifier backend. The target skill tree and revised workflow are proposals, not deployed structure.
 - (2026-11-24) README, CLI, Settings, YAML and Python source are not interchangeable documentation authorities: breakdown.yaml declares stages; Python models/contracts/engine enforce them; PLANS.md records history and decisions. The new docs state these boundaries explicitly.
@@ -94,7 +97,8 @@ recovery, and tests are in the linked workflow document.
 ## Context and Orientation
 
 - `docs/current-architecture-workflow.md` — latest four-agent target architecture and workflow; not current deployed behavior.
-- `docs/structure-migration.md` — source-grounded owner map, phased migration, and legacy-removal gate.
+- `docs/structure-migration.md` — source-grounded owner map, explicit workflow/TaskTodo migration, test relocation, and legacy-removal gate.
+- `docs/structure-gap-review.md` — gap findings, corrections, and remaining source-level blockers.
 - `PLANS.md` — living project history and milestone record. Older task plans and test counts are historical unless revalidated against current source.
 - Current code, runtime behavior, tests, and configuration take precedence over stale descriptions in older documentation.
 - Repository target: `itz1508/Breakdown`, branch `main`.
@@ -102,7 +106,7 @@ recovery, and tests are in the linked workflow document.
 
 ## Current Plan of Work
 
-The source-rechecked migration baseline is now recorded in `docs/structure-migration.md` on branch `migration/latest-four-agent-layout`. This first slice updates the target contract and source-owner map only; no runtime modules have moved. Implementation must preserve current behavior and durable formats, separate behavioral changes from file moves, and remove each legacy owner only after every consumer is repointed and the relevant checks pass.
+The source-rechecked migration baseline and gap review are recorded in `docs/structure-migration.md` and `docs/structure-gap-review.md` on branch `migration/latest-four-agent-layout`. Documentation changes do not move runtime modules. Pure package moves must preserve current behavior and durable formats; replacing the eight-stage workflow and converting BuildTask to TaskTodo are explicit behavior/schema migrations. Remove each legacy owner only after every consumer is repointed and relevant checks pass.
 
 Planning/decomposition rules for that implementation plan:
 
@@ -537,21 +541,9 @@ OpenAI-compatible endpoints (Databricks key or custom API key).
   - **Net total: 328 - 33 + 13 = 308 tests**, all passing clean. (D42 peak of 328, minus 33 automation tests retired in D43, plus 13 replacement tests for lifecycle, web_search, and bot decision.)
 ## Current Architecture and Workflow Record
 
-The active design document is
-[docs/current-architecture-workflow.md](docs/current-architecture-workflow.md).
+The active target design is [docs/current-architecture-workflow.md](docs/current-architecture-workflow.md): four agents (Auditor, Researcher, Planner, Builder), with Coder retained as an Auditor-owned read-only capability; a revision-preserving specification review and Accept & Check; accepted-item research; Auditor evidence comparison; Planner-owned plan and TaskTodo; explicit package confirmation; Builder sandbox/export/exit; independent validation; and evidence-based completion/retention.
 
-It defines the five-role target structure, shared handoff, Runtime/Storage
-boundaries, specification and review loop, research and repository
-reconciliation, Planner checks, confirmed package and digest, Builder
-preconditions and sandbox lifecycle, result synchronization, completion
-outcomes, optional independent verification, and end-to-end test scenarios.
+The target includes `feature_list.json` as the approved feature definition, immutable test cases, actual browser verification for UI features, and the proposal to track mutable feature status separately from the approval digest. Those requirements supersede the earlier November 19 feature-backlog interpretation. Coder-under-Auditor ownership is current target ownership, not superseded. The latest document explicitly labels proposals, assumptions, and open decisions; do not silently promote them into implementation decisions.
 
-The previous feature-backlog / `feature_list.json` / one-feature-at-a-time
-workflow proposal is superseded and is not the current orchestration model.
-Its test-pass-bit and mandatory browser-verification protocol must not be
-carried forward as active workflow requirements. The previous Coder-under-
-Auditor ownership and shared middleware proposal are also superseded.
-
-This record is a design target only. No code migration or runtime behavior is
-implied. Verify all current source interfaces before implementation.
+This is a target design only. The source on `main` still runs the eight-stage `breakdown.yaml` workflow and has not been migrated. The latest workflow is a behavior/schema migration, not a path-only refactor.
 

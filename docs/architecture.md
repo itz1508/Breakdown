@@ -112,7 +112,7 @@ The engine loads breakdown.yaml into validated workflow models. The contract reg
 
 Bootstrap injects backend implementations into role classes. Live role backends use an OpenAI-compatible chat API; Builder has a separate CodingBackend interface. Per-role model overrides are supported. Live operation is gated by BackendBinding records that validate permitted operations and evaluation evidence.
 
-Current wiring detail: Bootstrap constructs Auditor, Researcher, Planner, and Builder as workflow role entries. It also constructs Coder and injects it into Auditor as a code-analysis capability. Coder is a distinct class/module, but it is not currently an independent workflow stage owner in breakdown.yaml. The independent Coder role described in the target architecture is not yet implemented in this runtime.
+Current wiring detail: Bootstrap constructs Auditor, Researcher, Planner, and Builder as workflow role entries. It also constructs Coder and injects it into Auditor as a read-only code-analysis capability. This existing ownership agrees with the latest four-agent target; the migration changes its package location and definition source, not its authority into a fifth dispatched agent.
 
 ### Tools
 
