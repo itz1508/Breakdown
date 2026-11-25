@@ -36,54 +36,7 @@ changes require re-review and, when package content changes, a new digest
 and renewed confirmation. Detailed gates, handoff rules, supersession,
 recovery, and tests are in the linked workflow document.
 
-**Architecture target:** five independent roles—Researcher, Auditor, Coder,
-Planner, and Builder. Coder is an independent role, not an Auditor sub-role.
-Runtime owns workflow authority; Storage owns durable persistence. Builder
-does not use the shared model loop.
-
-**Status:** design baseline recorded; do not infer that the runtime has been
-migrated or that the workflow has passed implementation tests. Historical
-Phase 1/2 records below document earlier repository work and are not, by
-themselves, the current implementation plan.
-
-# Breakdown — Implementation ExecPlan (PLANS.md)
-
-Living implementation ExecPlan. Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective record actual implementation work and evidence. Do not use this file as a generic activity log or retrospectively record documentation-only maintenance as implementation execution.
-
-## Current Purpose / Big Picture
-
-The intended Breakdown workflow is:
-
-```text
-Session Start or Run
-→ actual User Input
-→ Auditor prepares discovery.json and previews its revision
-→ every edit creates a preserved revision and a changed-content preview
-→ Accept & Check validates the exact submitted specification
-→ material issue returns to clarification/edit and another Accept & Check
-→ Researcher investigates accepted research items
-→ Auditor performs post-research evidence comparison and repository review
-→ Planning: code review, refactor design, Koder when explicitly required,
-  fixture definitions, Scanner final gap analysis, Implementation Plan, TaskTodo
-→ User Review & Approval binds the exact plan revision + source checkpoint
-→ Runtime confirmation and hash verification
-→ Builder executes approved TaskTodo in the authorized sandbox, exports results,
-  and exits
-→ Host invokes the independent verify_all() utility
-→ Completion and retention
-```
-
-Declining the specification completes without Research or Build. Declining the approved plan completes without Builder. There is no additional approval gate before Research and no second user-approval gate.
-
-The project work tree is separate from runtime workflow progression:
-
-```text
-Project → Phases → File-level Tasks → 1–3 To-do guidance steps
-```
-
-For substantial projects, roughly 10 phases with roughly 10 tasks each (about 100 tasks) is a planning scale, not a quota or a flat workflow. One task owns one target file. An agent may own multiple file tasks (often 5–10 depending on complexity/capability); independent tasks should run concurrently, normally targeting at least five concurrent file tasks when available. One active writer per file; honor real dependencies; do not add dependency waves, batches, deferred queues, or artificial phase barriers.
-
-**Architecture target:** five independently dispatched agent skills—Auditor, Researcher, Planner, Koder, and Builder. Host owns orchestration and authority; Storage owns durable persistence. Host invokes the separate `skills/verify_all.py` utility after Builder export/exit. The existing `breakdown/` source layout and eight-stage `breakdown.yaml` remain the executable implementation on `main` until a separately reviewed migration is implemented.
+**Architecture target:** five independently dispatched agent skills—Auditor, Researcher, Planner, Coder, and Builder. Host owns orchestration and authority; Storage owns durable persistence. Independent validation is a required target operation after Builder export/exit, but its invocation interface and backend contract must be designed from existing source. The repository currently has verification helpers in `breakdown/verification.py`; default Bootstrap does not register a verifier backend. The existing `breakdown/` source layout and eight-stage `breakdown.yaml` remain the executable implementation on `main` until a separately reviewed migration is implemented.
 
 **Status:** target behavior is documented separately from current implementation. Do not infer that the runtime has been migrated or that the target workflow has passed implementation tests.
 
@@ -220,7 +173,7 @@ remain intact; fix forward, never edit tests to force success.
 - `breakdown.tools`: capability_inspect, source_search, source_read.
 - Agent roles in the November 17 implementation: Researcher, Auditor, Coder,
   Planner, and Builder. The target architecture uses independently dispatched
-  Auditor, Researcher, Planner, Koder, and Builder skills.
+  Auditor, Researcher, Planner, Coder, and Builder skills.
 
 ## Outcomes & Retrospective
 

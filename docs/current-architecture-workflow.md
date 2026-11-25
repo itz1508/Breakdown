@@ -15,7 +15,7 @@ The operating model is:
 - **Storage owns persistence:** artifact revisions, run state, checkpoints, and retained history.
 - The five agent skills perform bounded work and return typed results and artifact references. They do not advance the workflow, approve their own work, or own persistence.
 - The project work tree organizes implementation independently of the runtime workflow.
-- Independent verification is a Host-invoked operation through `skills/verify_all.py`, not a sixth autonomous agent.
+- Independent verification is a Host-controlled operation, not an agent role. Its invocation interface, backend contract, and result persistence must be defined against actual source; this target does not prescribe a module or public function name.
 
 Do not add a second controller, scheduler, storage system, or competing progress authority. Reuse existing application interfaces, identity records, artifact formats, digest functions, and persistence where they fit.
 
@@ -30,7 +30,7 @@ repository/
     │       ├── auditor/
     │       ├── researcher/
     │       ├── planner/
-    │       ├── koder/
+    │       ├── coder/
     │       └── builder/
     ├── shared/
     │   └── queue/
@@ -47,8 +47,6 @@ repository/
     │   └── ...
     ├── mcp/
     │   └── tools/                   # preserve existing breakdown/mcp/tools convention
-    └── skills/
-        └── verify_all.py            # Host-invoked independent verification utility
 ```
 
 This is the intended ownership layout, not a statement that these paths already exist on `main`. Preserve current module conventions and map source owners before moving or creating files.
@@ -60,7 +58,7 @@ The target has five independently dispatched agent skills:
 1. Auditor
 2. Researcher
 3. Planner
-4. Koder
+4. Coder
 5. Builder
 
 Each skill owns bounded behavior, domain guidance, and relevant input/output contracts. Host decides when a skill may run and which inputs and capabilities it receives. A skill cannot activate siblings, approve work, change permissions, or advance the workflow.
@@ -68,10 +66,10 @@ Each skill owns bounded behavior, domain guidance, and relevant input/output con
 - **Auditor** prepares the specification and performs evidence comparison.
 - **Researcher** investigates accepted research items.
 - **Planner** designs the implementation, constructs the project work tree, and resolves planning gaps.
-- **Koder** performs explicitly assigned code-oriented analysis or operations under its own contract and Host-authorized capabilities. It is independent of Auditor and does not inherit Builder sandbox authority.
+- **Coder** performs explicitly assigned code-oriented analysis or operations under its own contract and Host-authorized capabilities. It is independent of Auditor and does not inherit Builder sandbox authority.
 - **Builder** executes the user-approved TaskTodo in the authorized sandbox, exports actual results, and exits.
 
-**Independent validation is not another agent.** After Builder exports and exits, Host invokes the separate `skills/verify_all.py` utility in an independent verification context. Its result is retained separately from Builder's execution output.
+Independent validation is not another autonomous agent. Host invokes a separately configured verifier capability after Builder exports and exits; its result is retained separately from Builder's execution output. The actual invocation interface and backend contract must be grounded in existing source.
 
 ### 2.2 Composition and dependency boundaries
 
@@ -82,7 +80,7 @@ Each skill owns bounded behavior, domain guidance, and relevant input/output con
 - Agent skills consume shared contracts and injected capabilities. They do not import sibling skills or Host/Storage internals.
 - Preserve MCP tools under the existing `breakdown/mcp/tools/` convention. Hooks are a separate SDK integration mechanism; do not duplicate hooks as MCP tools or invent a hook directory without inspecting the SDK and repository.
 - Builder does not use the shared model/tool loop. Its coding/execution capability is injected and constrained by the confirmed TaskTodo.
-- `skills/verify_all.py` is invoked by Host after Builder export/exit. It is a verification utility, not a sixth agent skill and not a workflow authority.
+- Host controls the independent validation operation after Builder export/exit. Its implementation must reuse a source-backed verifier/backend interface; do not invent a module path, function name, or sixth agent.
 - Do not introduce a new provider package, universal Agent superclass, controller, scheduler, or withdrawn Input → Wrap → Output middleware framework.
 
 ### 2.3 Host and Storage ownership
@@ -94,7 +92,7 @@ Each skill owns bounded behavior, domain guidance, and relevant input/output con
 | `breakdown/mcp/tools/` | Registered MCP tool schemas and dispatch integrations under the existing package convention. |
 | Hooks | SDK lifecycle/event interception where supported; separate from MCP tool registration. |
 | `shared/queue/TaskTodo` | Shared task representation and task-level coordination data; not a deferred job queue. |
-| `skills/verify_all.py` | Independent verification utility invoked and consumed by Host; not an autonomous agent. |
+| Independent verifier/backend | Bounded validation only; no workflow authority, plan mutation, Builder execution, or self-approval. |
 
 
 
@@ -153,7 +151,7 @@ The runtime workflow has a small number of meaningful phases. These describe use
           v
 07. Planning
     - Code review and refactor design
-    - Koder operations when explicitly required
+    - Coder operations when explicitly required
     - Fixture and test definitions
     - Scanner final gap analysis
     - Implementation Plan and project TaskTodo
@@ -172,7 +170,7 @@ The runtime workflow has a small number of meaningful phases. These describe use
           |
           v
 10. Independent Validation and Completion
-    - Host invokes verify_all() independently of Builder
+    - Host invokes an independent validation operation that does not rely on Builder self-report
     - Findings return to the responsible owner for correction
     - Completion retains evidence, decisions, and recovery state
 ```
@@ -193,7 +191,7 @@ There is no additional user-approval gate between a valid specification check an
 - A requested change returns to the responsible research, audit, or planning work; affected outputs are refreshed and presented for approval again.
 - Host verifies the recorded approval, artifact hashes, and in-scope source preconditions before creating the sandbox.
 - Builder executes only the approved TaskTodo, exports actual results, and exits the sandbox.
-- After Builder export and sandbox exit, Host invokes `skills/verify_all.py` independently. Builder self-reported checks are not independent validation.
+- After Builder export and sandbox exit, Host invokes an independent validation operation through a separately configured verifier capability. Builder self-reported checks are not independent validation. The exact callable, input/output contract, backend configuration, and result persistence remain to be mapped to existing source before implementation.
 - A changed approved plan or source checkpoint requires renewed user review and approval before another Build.
 
 
@@ -209,9 +207,9 @@ There is no additional user-approval gate between a valid specification check an
 | Auditor — evidence comparison | Check the exact accepted specification; after Research, compare findings with accepted intent and relevant physical repository evidence; return grounded findings. |
 | Researcher | Investigate accepted research items; collect source-grounded evidence; record provenance, contradictions, alternatives, limitations, missing context, and unresolved questions. |
 | Planner | Review code, design refactoring, define implementation scope, create the project work tree and TaskTodo, define fixtures/acceptance criteria, resolve planning gaps, and incorporate Scanner's final gap analysis. |
-| Koder | Execute only explicitly assigned code-oriented analysis/operations through its own contract and Host-authorized capabilities. It cannot approve, advance the workflow, or acquire Builder sandbox authority by implication. |
+| Coder | Execute only explicitly assigned code-oriented analysis/operations through its own contract and Host-authorized capabilities. It cannot approve, advance the workflow, or acquire Builder sandbox authority by implication. |
 | Builder | Execute TaskTodo in the authorized sandbox; record actual operations and effects; export actual results; exit the sandbox. Builder does not perform or claim independent validation. |
-| Independent verification utility | Host invokes `skills/verify_all.py` after Builder export/exit. It independently evaluates the exported result against approved criteria and returns a separate validation result. It is not an autonomous agent, cannot rewrite Builder output, change the plan, or advance the workflow. |
+| Independent verifier/backend | Host invokes the separate verifier capability after Builder export/exit. It evaluates the exported result against approved criteria and returns a separate validation result. It cannot rewrite Builder output, change the plan, or advance the workflow. The actual interface must be source-grounded. |
 | Scanner capability | Perform the final bounded gap analysis during Planning and return findings to Planner. It is not a workflow authority or a user-approval owner. |
 
 ### 5.1 Research and reconciliation artifacts
@@ -363,9 +361,11 @@ Do not delete referenced artifacts or recovery-critical material. Cleanup may re
 
 ## 12. Independent validation
 
-Independent validation is required after Builder exports the result and exits the sandbox. Host invokes the separate `skills/verify_all.py` utility with the exact approved plan revision, source checkpoint, Builder export, and required criteria.
+Independent validation is a required target phase after Builder exports the result and exits the sandbox. Host invokes a separately configured verifier capability with the exact approved plan revision, source checkpoint, Builder export, and required criteria. The operation returns a separate validation result containing checks performed, observed results, evidence references, and remaining findings. It is not another autonomous agent.
 
-The utility independently executes `verify_all()` and returns a separate validation result containing checks performed, observed results, evidence references, and remaining findings. This is not a sixth autonomous agent.
+**Current implementation boundary on `main`:** `breakdown/verification.py` contains helper functions for assembling verification input, building a backend request, parsing verifier responses, and deriving a failure reason. It is not a standalone verification runner. `WorkflowEngine._post_build` contains an optional verifier-backend branch, but `breakdown/bootstrap.py` does not register a default verifier backend. The existing tests exercise the branch by injecting fake verifier backends; they do not prove default wiring. Consequently, independent validation is not active in the default runtime.
+
+The target migration must specify and test the actual verifier construction and invocation, backend configuration, input/output contract, evidence binding, and result persistence by inspecting and reusing current source owners. Do not assume a missing runner, invent a function name, or describe the target operation as already implemented.
 
 The independent verification operation does not:
 
@@ -385,7 +385,7 @@ It records completed, failed, skipped, blocked, unfinished, and uncertain work u
 A result is `succeeded` only when:
 
 1. Every required task and acceptance check has an actual recorded result.
-2. The independent `verify_all()` operation ran against the exact Builder export and approved criteria, and all required observations are `valid`.
+2. The independent verifier operation ran against the exact Builder export and approved criteria, and all required observations are `valid`.
 3. Evidence is bound to the exact approved Implementation Plan revision and source checkpoint.
 4. Any authorized synchronization/transfer is bound to the same verified result.
 5. No required work, blocking finding, or uncertain effect remains unresolved.
@@ -398,7 +398,7 @@ A declined specification completes without Research or Build. A declined Impleme
 - Researcher starts after Accept & Check validates the exact accepted specification. There is no additional approval gate before Research.
 - User Review & Approval occurs after Planning and binds the exact plan revision and source checkpoint.
 - Builder starts only after recorded approval and successful artifact/source hash verification.
-- Host invokes independent `verify_all()` after Builder export and sandbox exit.
+- Host invokes independent verifier after Builder export and sandbox exit.
 - A model statement is not user acceptance, approval, confirmation, or cancellation.
 - Corrections return to the owner of the affected result.
 - Historical artifacts remain readable; only dependent results are superseded.
@@ -406,7 +406,7 @@ A declined specification completes without Research or Build. A declined Impleme
 
 ## 15. Constraints and explicit non-goals
 
-- Five independently dispatched agent skills: Auditor, Researcher, Planner, Koder, and Builder. None owns workflow authority.
+- Five independently dispatched agent skills: Auditor, Researcher, Planner, Coder, and Builder. None owns workflow authority.
 - Independent verification is a Host-invoked utility, not a sixth agent or workflow authority.
 - Host owns workflow transitions, approvals, dispatch, confirmation/hash checks, sandbox lifecycle, and recovery.
 - Storage remains the sole durable persistence owner.
@@ -428,7 +428,7 @@ Re-check current repository source before moving or replacing modules. Verify:
 - Role/skill backends and least-privilege capabilities.
 - Source checkpoint, changed-path detection, synchronization, cleanup, and recovery ownership.
 - Storage ownership and existing MCP/hook conventions.
-- Exact way `verify_all()` is invoked against the exported result.
+- Exact way `independent verifier operation` is invoked against the exported result.
 
 Do not create replacement schemas or modules before this inspection. The target tree is an architectural destination; migration must preserve existing behavior and reuse existing interfaces where appropriate.
 
@@ -438,7 +438,7 @@ Test against the real application, Storage, and state interfaces with determinis
 
 | ID | Scenario | Required observation |
 |---|---|---|
-| W01 | Complete run | Exact specification check, accepted research, evidence comparison, planning, one plan/checkpoint approval, Builder export/exit, independent `verify_all()`, and evidence-backed Completion. |
+| W01 | Complete run | Exact specification check, accepted research, evidence comparison, planning, one plan/checkpoint approval, Builder export/exit, independent verifier, and evidence-backed Completion. |
 | W02 | Specification edits | Agent edits, manual edits, additions/removals preserve prior revisions and produce changed-content previews. |
 | W03 | Specification check issue | Material issue returns to clarification/edit; Researcher does not start until the new exact revision passes Accept & Check. |
 | W04 | Specification decline | Decision/artifacts retained; no Research, sandbox, or Build. |
@@ -453,7 +453,7 @@ Test against the real application, Storage, and state interfaces with determinis
 | W13 | Out-of-scope drift | Record without silently expanding blocking scope. |
 | W14 | Unauthorized mid-build change | Safe stop; preserve partial/uncertain evidence; do not claim success. |
 | W15 | Required task/check not run | Record as not run; outcome cannot be succeeded. |
-| W16 | Independent validation missing or errors | Missing/failed `verify_all()` cannot be treated as valid. |
+| W16 | Independent validation missing or errors | Missing/failed verifier invocation cannot be treated as valid. |
 | W17 | Independent validation rejects export | Return findings to the responsible owner; changed approved scope requires renewed approval. |
 | W18 | Export/verification revision mismatch | Outcome cannot be succeeded. |
 | W19 | Partial execution and retry | Reconcile uncertain effects, preserve completed tasks, and do not blindly replay. |
@@ -461,7 +461,7 @@ Test against the real application, Storage, and state interfaces with determinis
 | W21 | Crash and resume | Reuse current results and resume only affected work without duplicate execution. |
 | W22 | Digest stability | Canonical digest ignores key order/whitespace changes and detects content changes. |
 | W23 | Cleanup safety | Current/historical referenced artifacts and recovery evidence remain retained. |
-| W24 | Skill independence/layering | Five skills dispatch under Host authority; Koder is independent of Auditor; no forbidden skill-to-skill or shared-to-system imports. |
+| W24 | Skill independence/layering | Five skills dispatch under Host authority; Coder is independent of Auditor; no forbidden skill-to-skill or shared-to-system imports. |
 | W25 | Composition root | Imports have no construction/credential/network side effects; entry point builds the injected skill registry. |
 | W26 | File-level task tree | Each implementation task owns one target file and has 1–3 To-do steps. |
 | W27 | Parallel execution | Independent tasks execute concurrently; agents can own multiple tasks; at least five concurrent tasks are targeted when available. |
