@@ -1,7 +1,7 @@
 [project]
 name = "breakdown"
 version = "0.1.0"
-description = "OneShot Breakdown: contract-governed eight-stage workflow from request to synchronized build"
+description = "A contract-driven Python system for research, planning, and controlled software execution"
 requires-python = ">=3.11"
 dependencies = [
     "openai>=1.50,<3",
@@ -17,6 +17,13 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["breakdown"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"breakdown/researcher/SKILL.md" = "breakdown/researcher/SKILL.md"
+"breakdown/auditor/SKILL.md" = "breakdown/auditor/SKILL.md"
+"breakdown/coder/SKILL.md" = "breakdown/coder/SKILL.md"
+"breakdown/planner/SKILL.md" = "breakdown/planner/SKILL.md"
+"breakdown/planner/builder/SKILL.md" = "breakdown/planner/builder/SKILL.md"
 
 [dependency-groups]
 dev = [
@@ -40,6 +47,7 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["E501", "S101", "RUF012"]
+"breakdown/**/tests/**" = ["E501", "S101", "RUF012"]
 "evals/**" = ["E501", "S101", "RUF012"]
 
 [tool.ruff.lint.isort]
@@ -52,7 +60,7 @@ plugins = ["pydantic.mypy"]
 packages = ["breakdown"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["breakdown"]
 # --basetemp: C:\Users\itz15\AppData\Local\Temp denies pytest its root dir
 # (WinError 5); keep scratch space project-local and gitignored instead.
 addopts = "-q --import-mode=importlib --basetemp=.pytest-tmp"

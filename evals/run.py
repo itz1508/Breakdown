@@ -26,7 +26,6 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 from scorers import BlockingScoreboard
-
 from breakdown.checkpoint import capture_source_checkpoint, checkpoint_is_fresh
 from breakdown.models import (
     BuildExecutionInput,
@@ -58,7 +57,7 @@ from breakdown.roles.builder import Builder
 from breakdown.roles.coder import Coder
 from breakdown.roles.planner import Planner
 from breakdown.roles.researcher import Researcher
-from breakdown.safety import SafetyBoundary
+from breakdown.system.safety import SafetyBoundary
 
 ROOT = Path(__file__).resolve().parent
 

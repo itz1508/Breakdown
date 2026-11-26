@@ -28,16 +28,16 @@ The inspected `main` tree has the following relevant ownership:
 | Concern | Current source | Observed responsibility |
 |---|---|---|
 | Workflow authority | `breakdown/engine.py`, `breakdown/contracts.py`, `breakdown.yaml` | WorkflowEngine advances contracts/stages, activates roles, applies timeouts, and stops at decisions or terminal states. |
-| Canonical model-callable tools | `breakdown/tools.py` | One SDK-neutral `TOOLS` mapping of `CanonicalTool` definitions; typed Pydantic input models and handler functions. |
-| Role grants | `breakdown/tools.py`, `breakdown/roles/__init__.py` | `ROLE_TOOL_ALLOWLIST` and `RoleToolkit` expose a role-specific subset; Builder receives no canonical tool grant. |
-| Provider tool schema/loop | `breakdown/live_backend.py` | `tool_schemas()` derives provider schemas from the canonical registry. `OpenAICompatibleRoleBackend.generate()` owns bounded tool rounds, call dispatch, and final structured output. |
-| Runtime construction/resources | `breakdown/bootstrap.py` | Runtime constructs/injects shared provider clients and role backends; async close releases clients and the run lock. |
-| Build capability | `breakdown/roles/builder.py`, `breakdown/live_backend.py`, `breakdown/safety.py` | Builder uses a separate CodingBackend/sandbox path rather than canonical model-callable tools. |
-| Durable workflow events | `breakdown/events.py`, `breakdown/models.py` | SQLite append-only events, canonical digest verification, persistent workflow events and non-persisted activity updates. |
-| Cross-run memory | `breakdown/memory.py`, `breakdown/tools.py` | Memory writes are runtime-owned; selected analysis roles get read-only memory tools. |
+| Canonical model-callable tools | `breakdown/system/tools/tools.py` | One SDK-neutral `TOOLS` mapping of `CanonicalTool` definitions; typed Pydantic input models and handler functions. |
+| Role grants | `breakdown/system/tools/tools.py`, `breakdown/system/tools/toolkit.py` | `ROLE_TOOL_ALLOWLIST` and `RoleToolkit` expose a role-specific subset; Builder receives no canonical tool grant. |
+| Provider tool schema/loop | `breakdown/system/runtime/live_backend.py` | `tool_schemas()` derives provider schemas from the canonical registry. `OpenAICompatibleRoleBackend.generate()` owns bounded tool rounds, call dispatch, and final structured output. |
+| Runtime construction/resources | `breakdown/system/runtime/bootstrap.py` | Runtime constructs/injects shared provider clients and role backends; async close releases clients and the run lock. |
+| Build capability | `breakdown/planner/builder/agent.py`, `breakdown/system/runtime/live_backend.py`, `breakdown/system/safety.py` | Builder uses a separate CodingBackend/sandbox path rather than canonical model-callable tools. |
+| Durable workflow events | `breakdown/events.py`, `breakdown/shared/models.py` | SQLite append-only events, canonical digest verification, persistent workflow events and non-persisted activity updates. |
+| Cross-run memory | `breakdown/memory.py`, `breakdown/system/tools/tools.py` | Memory writes are runtime-owned; selected analysis roles get read-only memory tools. |
 | Tests | `tests/test_tools.py`, `tests/test_live_backend.py`, `tests/test_events.py`, `tests/test_roles.py` | Registry/allowlist, provider loop, schema, containment, event persistence and role boundary behavior. |
 
-The live repository does **not** currently contain a `breakdown/agent/`, `breakdown/mcp/`, or hooks package. `PLANS.md` records the shared Agent middleware direction as a future design decision; it is not an implemented source path in this baseline. The current plan also treats MCP/plugin deployment separation as a later phase gated by evidence.
+The live repository does **not** currently contain a `breakdown/agent/`, `breakdown/mcp/`, or hooks package. The former root planning record described a shared Agent middleware direction as a future design note; it was not an implemented source path in this baseline. MCP/plugin deployment separation remains a separate integration question gated by evidence.
 
 ## 2. Coverage matrix
 
@@ -59,7 +59,7 @@ Statuses refer to the inspected source at the baseline commit above, not to inte
 | Managed remote-session event reconciliation | **Not currently applicable** | Breakdown uses durable run state and stateless CLI invocations that pause/resume across processes; it does not currently consume a remote provider session event stream. |
 | File/path confinement | **Covered for current tool scope** | Breakdown routes source reads through its own containment policy and tests path escape and secret-file rejection. Anthropic's explicit context/path resolution is a useful comparison, not a replacement for Breakdown's SafetyBoundary or sandbox. |
 | MCP adapter boundary | **Not implemented in current tree** | Anthropic's `mcp.py` wraps MCP definitions/calls as runnable provider tools. Breakdown's current `main` has no MCP package; preserve the existing single canonical registry if/when MCP adapters are introduced. |
-| Middleware interception | **Planned, not implemented** | `PLANS.md` records Input → Wrap → Output middleware around model and tool call boundaries. Keep it call-scoped; do not let middleware own workflow transitions, approval decisions, or the Agent's bounded loop. |
+| Middleware interception | **Planned, not implemented** | The former planning record described Input → Wrap → Output middleware around model and tool call boundaries. This is historical design context, not an implemented source path or a requirement to add middleware. |
 
 ## 3. Patterns worth retaining from Anthropic
 
@@ -172,17 +172,17 @@ This diagram describes responsibility boundaries, not a mandate to create every 
 
 ### Breakdown (commit `955050197725`)
 
-- [Canonical tools and dispatch](https://github.com/itz1508/Breakdown/blob/95505019772544329fa9f9ab3d9148d232cf7b56/breakdown/tools.py)
-- [Role toolkit and role grants](https://github.com/itz1508/Breakdown/blob/95505019772544329fa9f9ab3d9148d232cf7b56/breakdown/roles/__init__.py)
-- [Live provider adapter and current tool loop](https://github.com/itz1508/Breakdown/blob/95505019772544329fa9f9ab3d9148d232cf7b56/breakdown/live_backend.py)
-- [Runtime/bootstrap and resource construction](https://github.com/itz1508/Breakdown/blob/95505019772544329fa9f9ab3d9148d232cf7b56/breakdown/bootstrap.py)
+- [Canonical tools and dispatch](https://github.com/itz1508/Breakdown/blob/95505019772544329fa9f9ab3d9148d232cf7b56/breakdown/system/tools/tools.py)
+- [Role toolkit and role grants](https://github.com/itz1508/Breakdown/blob/95505019772544329fa9f9ab3d9148d232cf7b56/breakdown/system/tools/toolkit.py)
+- [Live provider adapter and current tool loop](https://github.com/itz1508/Breakdown/blob/95505019772544329fa9f9ab3d9148d232cf7b56/breakdown/system/runtime/live_backend.py)
+- [Runtime/bootstrap and resource construction](https://github.com/itz1508/Breakdown/blob/95505019772544329fa9f9ab3d9148d232cf7b56/breakdown/system/runtime/bootstrap.py)
 - [Workflow progression](https://github.com/itz1508/Breakdown/blob/95505019772544329fa9f9ab3d9148d232cf7b56/breakdown/engine.py)
 - [Durable event store](https://github.com/itz1508/Breakdown/blob/95505019772544329fa9f9ab3d9148d232cf7b56/breakdown/events.py)
-- [Shared models and event/backend contracts](https://github.com/itz1508/Breakdown/blob/95505019772544329fa9f9ab3d9148d232cf7b56/breakdown/models.py)
+- [Shared models and event/backend contracts](https://github.com/itz1508/Breakdown/blob/95505019772544329fa9f9ab3d9148d232cf7b56/breakdown/shared/models.py)
 - [Tool tests](https://github.com/itz1508/Breakdown/blob/95505019772544329fa9f9ab3d9148d232cf7b56/tests/test_tools.py)
 - [Provider backend tests](https://github.com/itz1508/Breakdown/blob/95505019772544329fa9f9ab3d9148d232cf7b56/tests/test_live_backend.py)
 - [Event persistence tests](https://github.com/itz1508/Breakdown/blob/95505019772544329fa9f9ab3d9148d232cf7b56/tests/test_events.py)
-- [Current architecture and plan decisions](https://github.com/itz1508/Breakdown/blob/95505019772544329fa9f9ab3d9148d232cf7b56/PLANS.md)
+- [Latest five-agent package architecture](current-architecture-workflow.md)
 - [Current repository overview](https://github.com/itz1508/Breakdown/blob/95505019772544329fa9f9ab3d9148d232cf7b56/README.md)
 
 ### Anthropic Python SDK 2.13.0 (commit `bda18c620dbe`)

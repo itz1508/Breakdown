@@ -19,13 +19,13 @@ from pathlib import Path
 
 
 def main() -> int:
-    from breakdown.live_backend import (
+    from breakdown.system.runtime.live_backend import (
         LiveBackendError,
         OpenAICompatibleRoleBackend,
         build_openai_client,
         resolve_model,
     )
-    from breakdown.models import RoleBackendRequest, Settings
+    from breakdown.shared.models import RoleBackendRequest, Settings
 
     settings = Settings()
     try:
