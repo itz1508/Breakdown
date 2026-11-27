@@ -272,6 +272,9 @@ def build_runtime(
         # The verifier is independent of the Builder and is never inherited from the shared
         # role backend. A missing verifier remains missing and blocks synchronization.
         verifier_backend = (role_backends or {}).get("verifier")
+        if verifier_backend is None and offline_demo:
+            # Offline demo supplies a deterministic verifier over actual sandbox observations.
+            verifier_backend = role_backend
         if verifier_backend is not None:
             roles["verifier"] = verifier_backend
         return roles
