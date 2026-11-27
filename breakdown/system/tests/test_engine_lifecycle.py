@@ -8,11 +8,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from breakdown.system.runtime.approvals import ApprovalManager
-from breakdown.system.storage.artifact_store import ArtifactStore
-from breakdown.system.runtime.engine import EngineStores, WorkflowEngine, load_workflow
-from breakdown.system.storage.events import EventStore
-from breakdown.system.memory import MemoryStore, validate_memory_path
 from breakdown.shared.models import (
     CompletionRecord,
     EventType,
@@ -20,10 +15,15 @@ from breakdown.shared.models import (
     RunState,
     TokenUsage,
 )
-from breakdown.system.storage.run_store import RunStore
+from breakdown.system.memory import MemoryStore, validate_memory_path
+from breakdown.system.runtime.approvals import ApprovalManager
+from breakdown.system.runtime.engine import EngineStores, WorkflowEngine, load_workflow
 from breakdown.system.safety import SafetyBoundary
+from breakdown.system.storage.artifact_store import ArtifactStore
+from breakdown.system.storage.events import EventStore
+from breakdown.system.storage.run_store import RunStore
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _now() -> datetime:
