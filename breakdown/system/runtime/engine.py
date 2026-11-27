@@ -517,7 +517,10 @@ class WorkflowEngine:
                     tool_calls_used += verification_usage.tool_calls
                     stage_usage = self._add_stage_usage(stage_usage, stage_id, verification_usage)
                     usage_totals = (tokens_used, tool_calls_used)
-                    self._maybe_emit_cost_threshold(run_id, stage_id, tokens_before, tokens_used)
+                    self._maybe_emit_cost_threshold(
+                        run_id, stage_id, tokens_used - verification_usage.input_tokens - verification_usage.output_tokens,
+                        tokens_used,
+                    )
                 stage_cap = int(
                     (self.definition.cost_budget.get("per_stage") or {}).get("default_max_tokens") or 0
                 )
@@ -739,7 +742,6 @@ class WorkflowEngine:
         run_id: str,
         produced: dict[str, ArtifactRef],
         approved_checkpoint: SourceCheckpoint,
-        sandbox: Path | None = None,
     ) -> str | None:
         """build_execution.synchronization: detect, authorize, synchronize, reconcile."""
         report = self.stores.safety.detect_changed_paths(run_id, approved_checkpoint)
