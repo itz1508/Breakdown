@@ -10,20 +10,22 @@ digests are deterministic runtime facts, not Auditor outputs.
 """
 
 from __future__ import annotations
+
 from breakdown.shared.base import RoleOperationError
 from breakdown.shared.model_loop import generate_structured, load_skill_prompt, render_json
-from breakdown.shared.models import RoleBackend
 from breakdown.shared.models import (
     FindingsReviewInput,
     FindingsReviewOutput,
     ResearchProposalInput,
     ResearchProposalOutput,
+    RoleBackend,
     RoleBackendRequest,
     StageContext,
 )
 from breakdown.system.tools.toolkit import RoleToolkit
 
 _AUDITOR_BRIEF = load_skill_prompt(__file__)
+
 
 class Auditor:
     def __init__(self, *, backend: RoleBackend, tools: RoleToolkit) -> None:
