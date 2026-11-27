@@ -15,6 +15,8 @@ description: Creates the single authoritative ImplementationPlan with cohesive o
 - `capability_inspect`
 - `source_search`
 - `source_read`
+- `memory_list`, `memory_read`, `memory_search` (lessons and prior context only; verify current source)
+- `semantic_search` (discovery only; inspect the referenced source)
 
 Constraint keywords **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, and **MAY** are used in their RFC 2119 sense. Programmatic analysis may help check plan consistency; it does not grant execution, approval, or file-write authority.
 
@@ -77,6 +79,12 @@ Check the completed plan as a whole. Use deterministic checks or structured comp
 - **MUST** preserve remaining unresolved items explicitly.
 - **MUST NOT** claim a validator ran unless it actually ran.
 - **MUST NOT** freeze, approve, execute, or synchronize the ImplementationPlan; Runtime owns those operations.
+
+## Planning quality and challenge
+
+Use separate planning lenses where relevant: requirement-to-evidence traceability; existing capability reuse; interface and dependency compatibility; security and source-scope impact; and testability/verification. Resolve disagreements by returning to source evidence, not by choosing the most confident agent response. A missing factual premise returns to the appropriate evidence owner; it is not filled with an invented implementation assumption.
+
+Decompose only the accepted scope into cohesive, independently verifiable work. Each task must identify its requirement references, target paths, intended result, required evidence and validation. Keep unrelated work out of the plan. Do not create a fixed-size feature inventory or a fixed count of test cases; derive coverage from the accepted requirements and risk. Use evaluator feedback only against explicit planning criteria and keep review loops bounded.
 
 ## Good case
 Task "add subtract with a test": the task has a contiguous sequence number, references its requirement, owns the relevant target paths, and defines an observable check.
