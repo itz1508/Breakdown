@@ -310,11 +310,25 @@ def build_live_backends(settings: Settings) -> tuple[dict[str, RoleBackend], Cod
     """Live OpenAI-compatible backends (D30/D32): one shared client, per-role
     model tiers, canonical tool loop rooted at the target repository."""
     from breakdown.system.runtime.live_backend import (
+        LiveBackendError,
         OpenAICompatibleCodingBackend,
         OpenAICompatibleRoleBackend,
         build_openai_client,
         resolve_model,
     )
+
+    if not settings.model_verifier:
+        raise LiveBackendError(
+            "live build execution requires an independent verifier model "
+            "(BREAKDOWN_MODEL_VERIFIER)"
+        )
+    builder_model = resolve_model(settings, "builder")
+    verifier_model = resolve_model(settings, "verifier")
+    if verifier_model == builder_model:
+        raise LiveBackendError(
+            "BREAKDOWN_MODEL_VERIFIER must differ from the Builder model "
+            "to preserve independent evaluation"
+        )
 
     client = build_openai_client(settings)
     tool_root = settings.target_repo.resolve()
@@ -322,9 +336,9 @@ def build_live_backends(settings: Settings) -> tuple[dict[str, RoleBackend], Cod
     for role in ("auditor", "researcher", "coder", "planner", "verifier"):
         role_backends[role] = OpenAICompatibleRoleBackend(
             client=client,
-            model=resolve_model(settings, role),
+            model=verifier_model if role == "verifier" else resolve_model(settings, role),
             tool_root=tool_root,
             max_tool_rounds=settings.api_max_tool_rounds,
         )
-    coding: CodingBackend = OpenAICompatibleCodingBackend(client=client, model=resolve_model(settings, "builder"))
+    coding: CodingBackend = OpenAICompatibleCodingBackend(client=client, model=builder_model)
     return role_backends, coding
