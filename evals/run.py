@@ -548,11 +548,14 @@ def run_safety_case(case: Mapping[str, Any], base_dir: Path, scoreboard: Blockin
     build_output = asyncio.run(builder.execute_build(build_input("execute_build"), context))
 
     report = safety.detect_changed_paths(run_id, checkpoint)
+    builder_task_results_valid = all(
+        task.criterion is CriterionResult.VALID for task in build_output.task_results
+    )
     result = safety.authorize_synchronization(
         report=report,
         approved_paths={"src/calc.py", "tests/test_calc.py"},
         builder_reported_paths=build_output.observed_changed_paths,
-        task_results_valid=task_results_valid,
+        task_results_valid=task_results_valid and builder_task_results_valid,
         integration_valid=True,
         bindings_current=bindings_current,
         preconditions_current=checkpoint_is_fresh(checkpoint, fixture),
