@@ -314,6 +314,7 @@ RUNTIME_OWNED_KEYS: Mapping[str, str] = {
     "frozen_plan": "runtime step freeze_plan (implementation_planning.runtime_steps)",
     "frozen_plan_hash": "runtime step freeze_plan (implementation_planning.runtime_steps)",
     "preflight_result": "runtime step preflight_check (implementation_planning.runtime_steps)",
+    "independent_verification": "Host-invoked independent build verifier (Phase 3b verification.py)",
     "synchronization_result": "runtime synchronization authorization (Phase 2 safety.py)",
     "resulting_source_checkpoint": "deterministic post-sync checkpoint (Phase 2 checkpoint.py)",
 }
