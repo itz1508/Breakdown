@@ -19,14 +19,14 @@ Constraint keywords **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, and **MA
 
 ### 1. Verify the approved build package
 
-Before making changes, inspect the supplied frozen plan, plan hash, approval record and hash, approved plan revision, preflight result, and approved source checkpoint. Confirm that the package refers to the same plan revision and that preflight is valid.
+Before making changes, inspect the supplied plan revision, frozen plan hash, approval hash/reference, preflight result, approved source checkpoint, and processing plan. Host must already have verified the approval record/hash binding and current source checkpoint before dispatch. Builder performs local structural checks; it is not the authority that recomputes or authorizes the Host approval binding.
 
 **Constraints:**
 - **MUST** require a valid preflight result and the exact approved plan revision.
-- **MUST** require the approval binding and hashes specified by the input contract.
-- **MUST** revalidate the approval bindings before executing tasks.
+- **MUST** require the approval hash/reference and approved revision fields to be present.
+- **MUST NOT** claim to recompute or independently authorize the Host's approval binding; Host verifies it before dispatch.
 - **MUST NOT** modify, regenerate, or repair the plan, approval, hashes, or source checkpoint.
-- **MUST NOT** start work when required approval or preflight evidence is missing, mismatched, or not valid.
+- **MUST NOT** start work when required fields or preflight evidence are missing, mismatched, or not valid. The Host must block dispatch if its approval/hash/source-checkpoint verification is absent or stale.
 
 ### 2. Execute approved tasks in bounded units
 
