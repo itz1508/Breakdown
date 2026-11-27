@@ -70,7 +70,9 @@ class Builder:
                 continue
             result = await self._execute_task(task)
             results.append(result)
-            applied.extend(result.reported_changed_paths)
+            for changed_path in result.reported_changed_paths:
+                if changed_path not in applied:
+                    applied.append(changed_path)
             if result.criterion in stop_criteria:
                 stopped = True
         prepared = not stopped and all(row.criterion is CriterionResult.VALID for row in results)
