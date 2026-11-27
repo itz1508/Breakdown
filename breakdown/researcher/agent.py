@@ -59,29 +59,35 @@ def _build_baseline_map(
 
         exports: list[str] = []
         exports_status: Literal[
-            "not_applicable", "not_attempted", "complete", "unavailable", "syntax_invalid"
+            "not_applicable", "not_attempted", "complete", "unavailable", "syntax_invalid", "out_of_scope"
         ] = "not_applicable"
         if p.endswith(".py"):
             exports_status = "not_attempted"
             if root is not None:
-                full_path = root / file_path
+                resolved_root = root.resolve()
+                full_path = (resolved_root / file_path).resolve()
                 try:
-                    source = full_path.read_text(encoding="utf-8")
-                except (OSError, UnicodeError):
-                    exports_status = "unavailable"
+                    full_path.relative_to(resolved_root)
+                except ValueError:
+                    exports_status = "out_of_scope"
                 else:
                     try:
-                        tree = ast.parse(source)
-                    except SyntaxError:
-                        exports_status = "syntax_invalid"
+                        source = full_path.read_text(encoding="utf-8")
+                    except (OSError, UnicodeError):
+                        exports_status = "unavailable"
                     else:
-                        exports = [
-                            node.name
-                            for node in ast.iter_child_nodes(tree)
-                            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-                            and not node.name.startswith("_")
-                        ]
-                        exports_status = "complete"
+                        try:
+                            tree = ast.parse(source)
+                        except SyntaxError:
+                            exports_status = "syntax_invalid"
+                        else:
+                            exports = [
+                                node.name
+                                for node in ast.iter_child_nodes(tree)
+                                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+                                and not node.name.startswith("_")
+                            ]
+                            exports_status = "complete"
 
         entries.append(
             ScaffoldingEntry(
