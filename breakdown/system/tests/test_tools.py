@@ -141,48 +141,33 @@ def test_semantic_search_dispatch(repo: Path) -> None:
     assert report.matches[0].path == "src/calc.py"
 
 
-def test_web_search_enforces_domain_and_use_limits(repo: Path) -> None:
-    from breakdown.tools import ToolNotAuthorized, WebSearchRequest, web_search
+def test_web_search_reports_unavailable_without_fabricating_sources(repo: Path) -> None:
+    from breakdown.system.tools.tools import WebSearchRequest, web_search
 
-    # Domain in allowed_domains succeeds
-    res = web_search(WebSearchRequest(query="site:python.org pytest", allowed_domains=("python.org",)))
-    assert res.uses_consumed <= 5
-    assert len(res.results) >= 1
-    assert res.results[0].domain == "python.org"
-    assert res.search_cost_tokens > 0
+    result = web_search(WebSearchRequest(query="site:python.org pytest", allowed_domains=("python.org",)))
+    assert result.status == "unavailable"
+    assert result.results == ()
+    assert result.uses_consumed == 0
+    assert result.search_cost_tokens == 0
+    assert "No web search provider is configured" in result.message
 
-    # Domain not in allowed_domains raises ToolNotAuthorized
+
+def test_web_search_rejects_disallowed_domain(repo: Path) -> None:
+    from breakdown.system.tools.tools import ToolNotAuthorized, WebSearchRequest, web_search
+
     with pytest.raises(ToolNotAuthorized):
         web_search(WebSearchRequest(query="site:untrusted.com exploit", allowed_domains=("python.org",)))
-
-
-def test_web_search_offline_fallback_or_error(repo: Path) -> None:
-    from breakdown.tools import WebSearchRequest, web_search
-
-    # Offline query without specific domain gracefully falls back
-    res = web_search(WebSearchRequest(query="pytest fixture patterns"))
-    assert res.uses_consumed >= 1
-    assert len(res.results) >= 1
-    assert res.search_cost_tokens > 0
-
-
-def test_web_search_encrypted_content_rejected(repo: Path) -> None:
-    from breakdown.tools import WebSearchRequest, web_search
-
-    with pytest.raises(ValueError, match="encrypted or binary"):
-        web_search(WebSearchRequest(query="download encrypted blob"))
 
 
 def test_web_search_dispatch_and_toolkit(repo: Path) -> None:
     from breakdown.system.tools.toolkit import RoleToolkit
 
-    # Test via dispatch_tool
     dispatched = dispatch_tool("web_search", {"query": "pytest test runner"}, root=repo)
-    assert dispatched.uses_consumed >= 1
-    assert len(dispatched.results) >= 1
+    assert dispatched.status == "unavailable"
+    assert dispatched.results == ()
 
-    # Test via Researcher RoleToolkit
     toolkit = RoleToolkit(role="researcher", root=repo)
     assert "web_search" in toolkit.allowed_names()
     result = toolkit.call("web_search", {"query": "site:python.org unittest", "allowed_domains": ["python.org"]})
-    assert result.results[0].domain == "python.org"
+    assert result.status == "unavailable"
+    assert result.results == ()
