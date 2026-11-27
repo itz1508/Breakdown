@@ -24,6 +24,7 @@ from breakdown.shared.models import (
     CodingBackendResult,
     CriterionResult,
     ExecutionResult,
+    FixtureSpecification,
     FindingsReviewInput,
     ImplementationPlanningInput,
     ImplementationPlanningOutput,
@@ -36,6 +37,7 @@ from breakdown.shared.models import (
     ResearchProposalOutput,
     ResearchRecord,
     ResearchTodo,
+    UnresolvedQuestion,
     RunRef,
     SourceCheckpoint,
     StageContext,
@@ -341,6 +343,95 @@ async def test_auditor_rejects_finding_with_unknown_evidence(
         await auditor.review_research_findings(payload, _context("findings_review"))
 
 
+async def test_auditor_rejects_supported_finding_without_evidence(
+    fake_role_backend: Any, target_repo: Path
+) -> None:
+    finding = {
+        **FINDINGS_PAYLOAD["classified_findings"][0],
+        "decision_trace": [{"check": "checked", "observation": "unknown"}],
+    }
+    fake_role_backend.set_output(
+        "review_research_findings",
+        {**FINDINGS_PAYLOAD, "classified_findings": [finding]},
+    )
+    auditor = Auditor(backend=fake_role_backend, tools=RoleToolkit(role="auditor", root=target_repo))
+    payload = FindingsReviewInput(
+        research_record=_research_record(),
+        research_proposal=_proposal_output(),
+        exact_user_intent="x",
+        source_checkpoint=_checkpoint(),
+    )
+    with pytest.raises(RoleOperationError, match="requires evidence"):
+        await auditor.review_research_findings(payload, _context("findings_review"))
+
+
+async def test_auditor_rejects_modified_researcher_fixture(
+    fake_role_backend: Any, target_repo: Path
+) -> None:
+    fixture = FixtureSpecification(
+        fixture_id="fixture-1",
+        name="calculator fixture",
+        purpose="original purpose",
+        known_properties=("source file exists",),
+        setup=("create source file",),
+        actions=("call subtract",),
+        expected_observations=("returns difference",),
+        evidence_to_capture=("test output",),
+    )
+    changed_fixture = fixture.model_copy(update={"purpose": "changed purpose"})
+    research_record = _research_record().model_copy(
+        update={"fixture_specifications": (fixture,)}
+    )
+    fake_role_backend.set_output(
+        "review_research_findings",
+        {
+            **FINDINGS_PAYLOAD,
+            "reviewed_fixture_specifications": [changed_fixture.model_dump(mode="json")],
+        },
+    )
+    auditor = Auditor(backend=fake_role_backend, tools=RoleToolkit(role="auditor", root=target_repo))
+    payload = FindingsReviewInput(
+        research_record=research_record,
+        research_proposal=_proposal_output(),
+        exact_user_intent="x",
+        source_checkpoint=_checkpoint(),
+    )
+    with pytest.raises(RoleOperationError, match="changed Researcher-owned content"):
+        await auditor.review_research_findings(payload, _context("findings_review"))
+
+
+async def test_auditor_rejects_modified_unresolved_question(
+    fake_role_backend: Any, target_repo: Path
+) -> None:
+    question = UnresolvedQuestion(
+        question_id="q-unresolved",
+        text="Which provider is configured?",
+        missing_information="provider binding not supplied",
+    )
+    changed_question = question.model_copy(
+        update={"missing_information": "model thinks no provider exists"}
+    )
+    research_record = _research_record().model_copy(
+        update={"unresolved_questions": (question,)}
+    )
+    fake_role_backend.set_output(
+        "review_research_findings",
+        {
+            **FINDINGS_PAYLOAD,
+            "reviewed_unresolved_questions": [changed_question.model_dump(mode="json")],
+        },
+    )
+    auditor = Auditor(backend=fake_role_backend, tools=RoleToolkit(role="auditor", root=target_repo))
+    payload = FindingsReviewInput(
+        research_record=research_record,
+        research_proposal=_proposal_output(),
+        exact_user_intent="x",
+        source_checkpoint=_checkpoint(),
+    )
+    with pytest.raises(RoleOperationError, match="preserve exact source content"):
+        await auditor.review_research_findings(payload, _context("findings_review"))
+
+
 async def test_auditor_rejects_dropped_contradiction(fake_role_backend: Any, target_repo: Path) -> None:
     dropped = {**FINDINGS_PAYLOAD, "contradictions_preserved": []}
     fake_role_backend.set_output("review_research_findings", dropped)
@@ -386,6 +477,27 @@ async def test_researcher_addresses_every_question(fake_role_backend: Any, targe
     )
     output = await researcher.execute_research(payload, _context("research_execution"))
     assert output.research_record.resolved_questions
+
+
+async def test_researcher_rejects_todo_item_not_processed_to_terminal_state(
+    fake_role_backend: Any, target_repo: Path
+) -> None:
+    incomplete = {
+        **RESEARCH_PAYLOAD,
+        "research_todo": {
+            "items": [{"question_id": "q-1", "status": "not_run"}],
+        },
+    }
+    fake_role_backend.set_output("execute_research", incomplete)
+    researcher = Researcher(backend=fake_role_backend, tools=RoleToolkit(role="researcher", root=target_repo))
+    payload = ResearchExecutionInput(
+        research_proposal=_proposal_output(),
+        processing_plan=_processing_plan("research_response"),
+        research_approval_ref=ArtifactRef(artifact_key="research_approval_record", digest="2" * 64),
+        source_checkpoint=_checkpoint(),
+    )
+    with pytest.raises(RoleOperationError, match="not processed to a terminal state"):
+        await researcher.execute_research(payload, _context("research_execution"))
 
 
 async def test_researcher_rejects_unaddressed_question(fake_role_backend: Any, target_repo: Path) -> None:
