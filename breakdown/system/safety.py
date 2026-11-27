@@ -150,6 +150,7 @@ class SafetyBoundary:
         *,
         report: ChangedPathReport,
         approved_paths: Iterable[str],
+        builder_reported_paths: Iterable[str],
         task_results_valid: bool,
         integration_valid: bool,
         bindings_current: bool,
@@ -161,6 +162,17 @@ class SafetyBoundary:
         approved = {PurePosixPath(p.replace("\\", "/")).as_posix() for p in approved_paths}
         unexpected = sorted(report.all - approved)
         protected = sorted(path for path in report.all if is_protected_target(path))
+        reported = {
+            PurePosixPath(path.replace("\\", "/")).as_posix()
+            for path in builder_reported_paths
+        }
+        missing_reports = sorted(report.all - reported)
+        stale_reports = sorted(reported - report.all)
+        if missing_reports or stale_reports:
+            reasons.append(
+                "Builder changed-path report does not match Runtime detection: "
+                f"unreported={missing_reports}, not_changed={stale_reports}"
+            )
         if unexpected:
             reasons.append(f"unexpected changed paths: {unexpected}")
         if protected:
