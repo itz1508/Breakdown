@@ -432,7 +432,7 @@ class FindingsReviewOutput(StrictModel):
     implementation_planning_processing_plan: ProcessingPlan
 
 
-# --- Coder (read-only Auditor sub-role) ---
+# --- Coder (independent bounded code-analysis agent) ---
 
 
 class CodeAnalysisRequest(StrictModel):
