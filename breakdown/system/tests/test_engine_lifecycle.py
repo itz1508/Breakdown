@@ -180,6 +180,30 @@ class ScriptedRoleBackend:
         )
 
 
+class _ScriptedVerifierBackend:
+    """Test-only independent verifier fixture for offline workflow tests."""
+
+    async def generate(self, request: Any) -> Any:
+        from breakdown.shared.models import RoleBackendResponse
+
+        return RoleBackendResponse(
+            structured_output={
+                "task_verifications": [
+                    {
+                        "check_ref": "task-1",
+                        "criterion": "valid",
+                        "expected": "subtract(3, 2) == 1",
+                        "actual_observation": "test fixture observed the expected subtraction implementation",
+                    }
+                ]
+            },
+            text="",
+            usage=TokenUsage(input_tokens=50, output_tokens=50, tool_calls=0),
+            provider="test-fixture",
+            model="test-independent-verifier",
+        )
+
+
 class _ScriptedCodingBackend:
     """Applies the approved change inside the sandbox (simulated build work)."""
 
@@ -246,6 +270,7 @@ class _E2E:
                     backend=self.backend, tools=RoleToolkit(role="planner", root=self.target, memory_root=self.target)
                 ),
                 "builder": Builder(backend=_ScriptedCodingBackend(), sandbox_root=sandbox or self.target),
+                "verifier": _ScriptedVerifierBackend(),
             }
 
         self.engine = WorkflowEngine(
@@ -256,6 +281,7 @@ class _E2E:
             ),
             approvals=self.approvals,
             role_factory=role_factory,
+            runtime_kind="offline_demo",
         )
 
 
