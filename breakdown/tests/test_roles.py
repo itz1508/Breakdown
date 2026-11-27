@@ -638,7 +638,7 @@ async def test_builder_marks_completed_backend_without_change_receipt_uncertain(
     output = await builder.execute_build(_build_input(), _context("build_execution"))
     assert output.synchronization_prepared is False
     assert output.task_results[0].criterion is CriterionResult.UNCERTAINTY
-    assert "reported no changed paths" in output.task_results[0].actual_observation
+    assert "did not report changes for approved target paths" in output.task_results[0].actual_observation
 
 
 async def test_builder_failure_stops_and_is_not_valid(fake_coding_backend: Any, tmp_path: Path) -> None:
