@@ -9,10 +9,11 @@ from typing import Any
 
 import pytest
 from pydantic import ValidationError
+
 from breakdown.auditor.agent import Auditor
+from breakdown.builder.agent import Builder
 from breakdown.coder.agent import Coder
 from breakdown.planner.agent import Planner
-from breakdown.builder.agent import Builder
 from breakdown.researcher.agent import Researcher, _build_baseline_map
 from breakdown.shared.base import RoleOperationError
 from breakdown.shared.models import (
@@ -38,6 +39,7 @@ from breakdown.shared.models import (
     StageContext,
 )
 from breakdown.system.tools.toolkit import RoleToolkit
+
 
 def utcnow() -> datetime:
     return datetime.now(UTC)
@@ -548,6 +550,8 @@ def test_roles_import_only_shared_layers() -> None:
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("breakdown."):
-                assert node.module.startswith(allowed), f"{path.name} imports outside shared agent-support/system tools: {node.module}"
+                assert node.module.startswith(allowed), (
+                    f"{path.name} imports outside shared agent-support/system tools: {node.module}"
+                )
         if path.parent.name == "builder":
             assert "breakdown.shared.model_loop" not in path.read_text(encoding="utf-8")
