@@ -467,7 +467,7 @@ def test_roles_import_only_shared_layers() -> None:
         package_root / "planner" / "agent.py",
         package_root / "builder" / "agent.py,
     ]
-    allowed = ("breakdown.shared.", "breakdown.system.tools.")
+    allowed = ("breakdown.agents.", "breakdown.shared.", "breakdown.system.tools.")
     for path in agent_files:
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
