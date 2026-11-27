@@ -11,12 +11,13 @@ from pathlib import PurePosixPath
 
 from breakdown.shared.base import RoleOperationError
 from breakdown.shared.model_loop import generate_structured, load_skill_prompt, render_json
-from breakdown.shared.models import RoleBackend, validate_target_path
 from breakdown.shared.models import (
     CodeAnalysisEvidence,
     CodeAnalysisRequest,
+    RoleBackend,
     RoleBackendRequest,
     StageContext,
+    validate_target_path,
 )
 from breakdown.system.tools.toolkit import RoleToolkit
 
