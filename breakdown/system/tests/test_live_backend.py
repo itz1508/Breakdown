@@ -228,6 +228,31 @@ def test_coding_backend_writes_approved_path(tmp_path: Path) -> None:
     assert result.usage is not None and result.usage.input_tokens == 11
 
 
+def test_resolve_model_supports_builder_and_verifier_tiers() -> None:
+    settings = Settings(
+        model="default-tier",
+        model_builder="builder-tier",
+        model_verifier="verifier-tier",
+    )
+    assert resolve_model(settings, "builder") == "builder-tier"
+    assert resolve_model(settings, "verifier") == "verifier-tier"
+
+
+def test_live_backends_require_distinct_verifier_model() -> None:
+    from breakdown.system.runtime.bootstrap import build_live_backends
+
+    with pytest.raises(LiveBackendError, match="BREAKDOWN_MODEL_VERIFIER"):
+        build_live_backends(Settings(model="shared-tier"))
+    with pytest.raises(LiveBackendError, match="must differ"):
+        build_live_backends(
+            Settings(
+                model="shared-tier",
+                model_builder="same-tier",
+                model_verifier="same-tier",
+            )
+        )
+
+
 def test_secret_never_appears_in_configuration_errors() -> None:
     settings = Settings(api_key=SECRET)  # base_url missing
     with pytest.raises(LiveBackendError, match="BREAKDOWN_API_BASE_URL") as excinfo:
