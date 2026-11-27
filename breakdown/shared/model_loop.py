@@ -39,8 +39,7 @@ def render_json(value: Any, limit: int = 50_000) -> str:
 
 
 def load_skill_prompt(module_file: str) -> str:
-    """Load the colocated SKILL.md as the single agent-instruction source."""
-    content = (Path(module_file).with_name("SKILL.md")).read_text(encoding="utf-8")
-    if content.startswith("---\n"):
-        _, _, content = content.split("---\n", 2)
-    return content.strip()
+    """Load shared source-grounded guidance plus the colocated role skill."""
+    from breakdown.agents.prompt import load_agent_prompt
+
+    return load_agent_prompt(module_file)
