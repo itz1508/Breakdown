@@ -12,7 +12,8 @@
 - `breakdown/__main__.py`: sole composition root and agent registry.
 - `breakdown/shared/`: shared models, strict base, configuration schema and model-loop helpers.
 - `breakdown/researcher/`, `auditor/`, `coder/`, `planner/`: independent agent packages.
-- `breakdown/planner/builder/`: Builder package; does not use the shared model loop.
+- `breakdown/builder/`: independent Builder package; receives the shared working framework and its local skill, and does not use the shared model loop.
+- `breakdown/agents/`: common prompt assembly and source-grounded agent working framework.
 - `breakdown/system/runtime/`: host-controlled runtime.
 - `breakdown/system/storage/`: durable records and checkpoint/digest implementation.
 - `breakdown/system/tools/`: canonical tools and scoped dispatch.
