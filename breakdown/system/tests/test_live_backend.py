@@ -257,6 +257,33 @@ def test_live_coding_backend_blocks_unsupported_target_dispositions(
     assert "does not support target dispositions" in result.observation
     assert requests == []
 
+
+def test_coding_backend_blocks_symlink_escape_before_provider_call(tmp_path: Path) -> None:
+    import asyncio
+
+    calls: list[httpx.Request] = []
+    sandbox = tmp_path / "sandbox"
+    (sandbox / "src").mkdir(parents=True)
+    outside = tmp_path / "private.txt"
+    outside.write_text("PRIVATE CONTENT", encoding="utf-8")
+    link = sandbox / "src" / "calc.py"
+    try:
+        link.symlink_to(outside)
+    except OSError as exc:
+        pytest.skip(f"symlink creation is unavailable in this environment: {exc}")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(200, json=_completion(content='{"src/calc.py": "replacement"}'))
+
+    backend = OpenAICompatibleCodingBackend(client=_client(handler), model="m")
+    result = asyncio.run(backend.apply_task(_coding_request(sandbox)))
+
+    assert result.execution_result is ExecutionResult.BLOCKED
+    assert "escapes sandbox during read" in result.observation
+    assert calls == []
+    assert outside.read_text(encoding="utf-8") == "PRIVATE CONTENT"
+
 def test_resolve_model_supports_builder_and_verifier_tiers() -> None:
     settings = Settings(
         model="default-tier",
