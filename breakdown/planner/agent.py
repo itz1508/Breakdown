@@ -172,6 +172,19 @@ def _run_planning_gap_scan(
         if duplicate_targets:
             gaps.append(f"task {task.task_id!r} repeats target paths: {sorted(duplicate_targets)}")
 
+        unsupported_dispositions = sorted(
+            {
+                target.disposition
+                for target in task.target_paths
+                if target.disposition in {"delete", "move"}
+            }
+        )
+        if unsupported_dispositions:
+            gaps.append(
+                f"task {task.task_id!r} requires unsupported coding-backend dispositions: "
+                f"{unsupported_dispositions}"
+            )
+
         for target in task.target_paths:
             resolved = (root / target.path).resolve()
             if not resolved.is_relative_to(root):
