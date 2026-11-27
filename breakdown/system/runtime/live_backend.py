@@ -333,8 +333,34 @@ class OpenAICompatibleCodingBackend:
         approved = tuple(target.path for target in task.target_paths)
         current: dict[str, str] = {}
         for path in approved:
-            file_path = sandbox / path
-            current[path] = file_path.read_text(encoding="utf-8") if file_path.exists() else ""
+            file_path = sandbox_resolved / path
+            resolved_file = file_path.resolve()
+            if not resolved_file.is_relative_to(sandbox_resolved):
+                return CodingBackendResult(
+                    execution_result=ExecutionResult.BLOCKED,
+                    observation=f"approved target path escapes sandbox during read: {path!r}",
+                    reported_changed_paths=(),
+                )
+            if not resolved_file.exists():
+                current[path] = ""
+                continue
+            if not resolved_file.is_file():
+                return CodingBackendResult(
+                    execution_result=ExecutionResult.BLOCKED,
+                    observation=f"approved target path is not a regular file: {path!r}",
+                    reported_changed_paths=(),
+                )
+            try:
+                current[path] = resolved_file.read_text(encoding="utf-8")
+            except (OSError, UnicodeError) as exc:
+                return CodingBackendResult(
+                    execution_result=ExecutionResult.BLOCKED,
+                    observation=(
+                        f"approved target path could not be read safely: {path!r} "
+                        f"({type(exc).__name__})"
+                    ),
+                    reported_changed_paths=(),
+                )
         prompt = (
             "Apply exactly one approved build task inside the sandbox.\n"
             f"Task: {task.responsibility}\n"
