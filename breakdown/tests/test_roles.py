@@ -390,6 +390,19 @@ def test_researcher_baseline_map_marks_invalid_python_source(target_repo: Path) 
     assert entry.exports_status == "syntax_invalid"
 
 
+
+def test_researcher_baseline_map_rejects_paths_outside_repository(target_repo: Path) -> None:
+    outside_file = target_repo.parent / "outside.py"
+    outside_file.write_text("class OutsideRepository: pass", encoding="utf-8")
+    checkpoint = _checkpoint().model_copy(update={"file_hashes": {"../outside.py": "c" * 64}})
+
+    baseline_map = _build_baseline_map(checkpoint, target_repo)
+
+    entry = baseline_map.entries[0]
+    assert entry.exports == ()
+    assert entry.exports_status == "out_of_scope"
+
+
 async def test_researcher_rejects_missing_provenance(fake_role_backend: Any, target_repo: Path) -> None:
     bad_payload = {
         "research_record": {
