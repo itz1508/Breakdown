@@ -204,6 +204,9 @@ def parse_verification(
             criterion = CriterionResult.NOT_VALID
             observation = "verifier returned valid without an actual observation"
 
+        unexecuted_commands = [
+            step.step_id for step in task.validation_steps if step.kind == "command"
+        ]
         required_observation_unavailable = any(
             file.status == "unavailable" or file.truncated
             for file in task.observed_files
@@ -212,7 +215,13 @@ def parse_verification(
             file.status == "missing" and file.disposition != "delete"
             for file in task.observed_files
         )
-        if criterion is CriterionResult.VALID and required_observation_unavailable:
+        if criterion is CriterionResult.VALID and unexecuted_commands:
+            criterion = CriterionResult.UNCERTAINTY
+            observation = (
+                f"{observation}; required commands were not executed by the Host: "
+                f"{sorted(unexecuted_commands)}"
+            ).strip("; ")
+        elif criterion is CriterionResult.VALID and required_observation_unavailable:
             criterion = CriterionResult.UNCERTAINTY
             observation = (
                 f"{observation}; required file evidence was truncated or unavailable"
