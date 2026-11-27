@@ -333,7 +333,15 @@ class OpenAICompatibleCodingBackend:
                 lambda: self._client.chat.completions.create(
                     model=self._model,
                     messages=[
-                        {"role": "system", "content": "You edit files precisely and never touch unlisted paths."},
+                        {
+                            "role": "system",
+                            "content": (
+                                request.agent_instructions.strip()
+                                or "You edit files precisely and never touch unlisted paths."
+                            )
+                            + "\n\nExecution invariant: edit only approved target paths inside the supplied "
+                            "sandbox; return complete file contents as JSON.",
+                        },
                         {"role": "user", "content": prompt},
                     ],
                 ),
