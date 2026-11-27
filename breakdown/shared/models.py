@@ -886,6 +886,7 @@ class CodingBackendRequest(StrictModel):
     task: BuildTask
     sandbox_root: str = Field(min_length=1)
     prior_error: str = ""
+    agent_instructions: str = ""
 
 
 class CodingBackendResult(StrictModel):
