@@ -123,10 +123,15 @@ class ScriptedCodingBackend:
                 "def add(a, b):\n    return a + b\n\n\ndef subtract(a, b):\n    return a - b\n",
                 encoding="utf-8",
             )
+            (sandbox / "tests").mkdir(parents=True, exist_ok=True)
+            (sandbox / "tests" / "test_calc.py").write_text(
+                "from src.calc import subtract\\n\\n\\ndef test_subtract() -> None:\\n    assert subtract(3, 2) == 1\\n",
+                encoding="utf-8",
+            )
             return CodingBackendResult(
                 execution_result=ExecutionResult.COMPLETED,
                 observation="subtract implemented in sandbox",
-                reported_changed_paths=("src/calc.py",),
+                reported_changed_paths=("src/calc.py", "tests/test_calc.py"),
                 usage=usage,
             )
         if outcome == "blocked":
