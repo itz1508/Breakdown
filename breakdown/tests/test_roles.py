@@ -297,6 +297,47 @@ async def test_auditor_rejects_unknown_requirement_references(
         await auditor.review_research_findings(payload, _context("findings_review"))
 
 
+async def test_auditor_rejects_changed_contradiction(
+    fake_role_backend: Any, target_repo: Path
+) -> None:
+    changed = {
+        **FINDINGS_PAYLOAD,
+        "contradictions_preserved": [
+            {"topic": "naming", "positions": ["snake_case", "PascalCase"], "evidence_refs": ["ev-1"]}
+        ],
+    }
+    fake_role_backend.set_output("review_research_findings", changed)
+    auditor = Auditor(backend=fake_role_backend, tools=RoleToolkit(role="auditor", root=target_repo))
+    payload = FindingsReviewInput(
+        research_record=_research_record(),
+        research_proposal=_proposal_output(),
+        exact_user_intent="x",
+        source_checkpoint=_checkpoint(),
+    )
+    with pytest.raises(RoleOperationError, match="preserved exactly"):
+        await auditor.review_research_findings(payload, _context("findings_review"))
+
+
+async def test_auditor_rejects_finding_with_unknown_evidence(
+    fake_role_backend: Any, target_repo: Path
+) -> None:
+    trace = [{**FINDINGS_PAYLOAD["classified_findings"][0]["decision_trace"][0], "evidence_ref": "missing"}]
+    changed_finding = {**FINDINGS_PAYLOAD["classified_findings"][0], "decision_trace": trace}
+    fake_role_backend.set_output(
+        "review_research_findings",
+        {**FINDINGS_PAYLOAD, "classified_findings": [changed_finding]},
+    )
+    auditor = Auditor(backend=fake_role_backend, tools=RoleToolkit(role="auditor", root=target_repo))
+    payload = FindingsReviewInput(
+        research_record=_research_record(),
+        research_proposal=_proposal_output(),
+        exact_user_intent="x",
+        source_checkpoint=_checkpoint(),
+    )
+    with pytest.raises(RoleOperationError, match="unknown evidence"):
+        await auditor.review_research_findings(payload, _context("findings_review"))
+
+
 async def test_auditor_rejects_dropped_contradiction(fake_role_backend: Any, target_repo: Path) -> None:
     dropped = {**FINDINGS_PAYLOAD, "contradictions_preserved": []}
     fake_role_backend.set_output("review_research_findings", dropped)
@@ -345,6 +386,60 @@ async def test_researcher_rejects_unaddressed_question(fake_role_backend: Any, t
         source_checkpoint=_checkpoint(),
     )
     with pytest.raises(RoleOperationError):
+        await researcher.execute_research(payload, _context("research_execution"))
+
+
+async def test_researcher_rejects_unknown_resolved_evidence_reference(
+    fake_role_backend: Any, target_repo: Path
+) -> None:
+    bad = {
+        **RESEARCH_PAYLOAD,
+        "research_record": {
+            **RESEARCH_PAYLOAD["research_record"],
+            "resolved_questions": [
+                {"question_id": "q-1", "answer": "pytest", "evidence_refs": ["missing-evidence"]}
+            ],
+        },
+    }
+    fake_role_backend.set_output("execute_research", bad)
+    researcher = Researcher(backend=fake_role_backend, tools=RoleToolkit(role="researcher", root=target_repo))
+    payload = ResearchExecutionInput(
+        research_proposal=_proposal_output(),
+        processing_plan=_processing_plan("research_response"),
+        research_approval_ref=ArtifactRef(artifact_key="research_approval_record", digest="2" * 64),
+        source_checkpoint=_checkpoint(),
+    )
+    with pytest.raises(RoleOperationError, match="unknown evidence"):
+        await researcher.execute_research(payload, _context("research_execution"))
+
+
+async def test_researcher_rejects_normalized_evidence_provenance_drift(
+    fake_role_backend: Any, target_repo: Path
+) -> None:
+    bad = {
+        **RESEARCH_PAYLOAD,
+        "research_record": {
+            **RESEARCH_PAYLOAD["research_record"],
+            "normalized_evidence": [
+                {
+                    "evidence_ref": "ev-1",
+                    "normalized_form": "repo uses pytest",
+                    "source_identity": "invented-repository",
+                    "source_location": "tests/test_calc.py",
+                    "provenance_preserved": True,
+                }
+            ],
+        },
+    }
+    fake_role_backend.set_output("execute_research", bad)
+    researcher = Researcher(backend=fake_role_backend, tools=RoleToolkit(role="researcher", root=target_repo))
+    payload = ResearchExecutionInput(
+        research_proposal=_proposal_output(),
+        processing_plan=_processing_plan("research_response"),
+        research_approval_ref=ArtifactRef(artifact_key="research_approval_record", digest="2" * 64),
+        source_checkpoint=_checkpoint(),
+    )
+    with pytest.raises(RoleOperationError, match="changed source provenance"):
         await researcher.execute_research(payload, _context("research_execution"))
 
 
