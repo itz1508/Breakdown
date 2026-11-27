@@ -103,7 +103,6 @@ def _run_planning_gap_scan(
     if unsupported_requirements:
         gaps.append(f"plan requirements without reviewed findings: {sorted(unsupported_requirements)}")
 
-    finding_ids = {finding.finding_id for finding in input_value.classified_findings}
     evidence_ids = {
         step.evidence_ref
         for finding in input_value.classified_findings
@@ -111,7 +110,7 @@ def _run_planning_gap_scan(
         if step.evidence_ref
     }
     evidence_ids.update(item.evidence_ref for item in input_value.normalized_evidence)
-    known_source_refs = finding_ids | evidence_ids
+    known_source_refs = evidence_ids
 
     for decision in plan.technology_decisions:
         unknown_refs = set(decision.evidence_refs) - known_source_refs
