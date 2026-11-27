@@ -126,7 +126,7 @@ def test_tool_definitions_carry_schemas() -> None:
 
 
 def test_semantic_search_offline_fallback(repo: Path) -> None:
-    from breakdown.semantic_search import SemanticSearchRequest, semantic_search
+    from breakdown.system.tools.semantic_search import SemanticSearchRequest, semantic_search
 
     report = semantic_search(SemanticSearchRequest(query="calc add"), root=repo)
     assert report.mode == "lexical_fallback"
