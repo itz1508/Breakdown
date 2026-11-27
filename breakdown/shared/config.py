@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     api_base_url: str | None = None
     api_key: SecretStr | None = None
     model: str | None = None
+    model_builder: str | None = None
     model_auditor: str | None = None
     model_researcher: str | None = None
     model_coder: str | None = None
