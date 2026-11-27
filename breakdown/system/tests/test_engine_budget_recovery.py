@@ -9,11 +9,11 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from breakdown.approvals import ApprovalManager
-from breakdown.artifact_store import ArtifactStore
-from breakdown.engine import EngineStores, WorkflowEngine, load_workflow
-from breakdown.events import EventStore
-from breakdown.models import (
+from breakdown.system.runtime.approvals import ApprovalManager
+from breakdown.system.storage.artifact_store import ArtifactStore
+from breakdown.system.runtime.engine import EngineStores, WorkflowEngine, load_workflow
+from breakdown.system.storage.events import EventStore
+from breakdown.shared.models import (
     CodingBackendResult,
     EventType,
     ExecutionResult,
@@ -22,8 +22,8 @@ from breakdown.models import (
     RunState,
     TokenUsage,
 )
-from breakdown.run_store import RunStore
-from breakdown.safety import SafetyBoundary
+from breakdown.system.storage.run_store import RunStore
+from breakdown.system.safety import SafetyBoundary
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -166,7 +166,7 @@ class Harness:
         self.runs = RunStore(state)
         self.safety = SafetyBoundary(target_root=self.target, state_root=state)
         self.definition = load_workflow(definition_path or (REPO_ROOT / "breakdown.yaml"))
-        from breakdown.contracts import build_contract_registry
+        from breakdown.system.runtime.contracts import build_contract_registry
         from breakdown.system.tools.toolkit import RoleToolkit
         from breakdown.auditor.agent import Auditor
         from breakdown.builder.agent import Builder
