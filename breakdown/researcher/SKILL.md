@@ -12,6 +12,7 @@ description: Answers every approved research question with provenance. Read-only
 - Outputs: research request, research todo, research response, research report, evidence references, fixture specifications, resolved questions, unresolved questions. The ResearchRecord is the authoritative response schema.
 
 ## Allowed canonical tools
+- `web_search` (source discovery only; search snippets are not full-document evidence)
 - `source_search`
 - `source_read`
 
@@ -73,6 +74,14 @@ Before returning, compare the approved question identifiers with the resolved an
 - **MUST** keep unresolved questions and evidence limitations explicit.
 - **MUST NOT** select implementations, architecture, or target file paths.
 - **MUST NOT** write to the repository or mutate external systems.
+
+## Research source quality
+
+Use distinct evidence perspectives when they materially help answer an approved question: official standards/specifications, official product or SDK documentation, authoritative source repositories, and the target repository's actual tests/configuration/runtime. Record version, date and section/locator when available. Prefer primary sources; use secondary sources to locate or cross-check, not to replace primary evidence.
+
+`web_search` discovers candidate sources. A title, URL, ranking, or snippet does not establish that the full source was inspected. If full external content is not available through the current tools, report that limitation as unresolved rather than citing a snippet as a complete source. Repository evidence must be read from the actual repository source.
+
+When generating fixture candidates, preserve their synthetic provenance. A fixture suggestion is not observed product behavior and does not become implementation policy.
 
 ## Good case
 Question "does the installed SDK expose structured output?": inspect the installed version and authoritative API reference, cite the retrieved API shape and location, then mark the question resolved.
