@@ -17,14 +17,14 @@
 | Cross-agent types and strict base | `breakdown/shared/base.py`, `breakdown/shared/models.py` |
 | Configuration schema/access | `breakdown/shared/config.py` |
 | Shared structured model loop | `breakdown/shared/model_loop.py` |
-| Agent behavior and instruction changes | Its package's `agent.py` and `SKILL.md` |
+| Agent behavior and instruction changes | Its package's `agent.py` and `SKILL.md`; shared prompt assembly in `breakdown/agents/prompt.py` |
 | Workflow progression and approvals | `breakdown/system/runtime/` |
 | Artifact/event/run/checkpoint persistence | `breakdown/system/storage/` |
 | Canonical tools and tool dispatch | `breakdown/system/tools/` |
 | Path containment and source effects | `breakdown/system/safety.py` |
 | Memory | `breakdown/system/memory.py` |
 
-Builder is located under `breakdown/planner/builder/` and must not depend on `shared/model_loop.py`.
+Builder is located at `breakdown/builder/`, outside Planner, and must not depend on `shared/model_loop.py`. It receives the common framework and Builder skill through `CodingBackendRequest.agent_instructions`.
 
 ## Verification commands
 
