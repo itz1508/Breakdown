@@ -350,6 +350,7 @@ class ScaffoldingEntry(StrictModel):
     category: str = Field(min_length=1)
     responsibility: str = Field(min_length=1)
     exports: tuple[str, ...] = ()
+    exports_status: Literal["not_applicable", "not_attempted", "complete", "unavailable", "syntax_invalid"] = "not_attempted"
 
 
 class BaselineMap(StrictModel):
