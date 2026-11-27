@@ -52,6 +52,50 @@ def test_source_search_finds_match(repo: Path) -> None:
     assert any(match.path == "src/calc.py" for match in report.matches)
 
 
+def test_source_search_enforces_host_scope(repo: Path) -> None:
+    from breakdown.system.tools.tools import SourceSearchRequest
+
+    (repo / "src" / "scoped.py").write_text("SCOPE_MARKER = 1\\n", encoding="utf-8")
+    (repo / "tests").mkdir()
+    (repo / "tests" / "outside.py").write_text("SCOPE_MARKER = 2\\n", encoding="utf-8")
+
+    result = source_search(
+        SourceSearchRequest(pattern="SCOPE_MARKER", scope_paths=("src",)),
+        root=repo,
+    )
+    assert {match.path for match in result.matches} == {"src/scoped.py"}
+
+
+def test_dispatch_host_scope_overrides_model_search_scope(repo: Path) -> None:
+    (repo / "src" / "scoped.py").write_text("SCOPE_MARKER = 1\\n", encoding="utf-8")
+    (repo / "tests").mkdir()
+    (repo / "tests" / "outside.py").write_text("SCOPE_MARKER = 2\\n", encoding="utf-8")
+
+    result = dispatch_tool(
+        "source_search",
+        {
+            "pattern": "SCOPE_MARKER",
+            "scope_paths": ["."],
+        },
+        root=repo,
+        scope_paths=("src",),
+    )
+    assert {match.path for match in result.matches} == {"src/scoped.py"}
+
+
+def test_source_read_rejects_path_outside_host_scope(repo: Path) -> None:
+    from breakdown.system.tools.tools import SourceReadRequest
+
+    (repo / "tests").mkdir()
+    (repo / "tests" / "outside.py").write_text("PRIVATE_SCOPE_CONTENT", encoding="utf-8")
+    with pytest.raises(ToolNotAuthorized, match="outside the Host-supplied tool scope"):
+        source_read(
+            SourceReadRequest(path="tests/outside.py"),
+            root=repo,
+            scope_paths=("src",),
+        )
+
+
 def test_source_search_invalid_pattern_rejected(repo: Path) -> None:
     with pytest.raises(ToolInputNotValid):
         source_search(SourceSearchRequest(pattern="("), root=repo)
