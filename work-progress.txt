@@ -1,6 +1,6 @@
 # Breakdown — Source-Grounded Agent Framework Work Progress
 
-Date & Time: 2026-11-26 16:59:23 America/Los_Angeles
+Date & Time: 2026-11-26 (continued source review)
 Repository: https://github.com/itz1508/Breakdown
 Base branch/ref: main
 Base commit inspected: f5b7821ccf6d2a1c99db541e2b57645e68121497
@@ -43,3 +43,20 @@ Status: Partially Ready
 - No Builder prompt was produced because the Builder implementation was changed directly.
 - No subagent run is claimed; no subagent orchestration tool was available in this execution environment.
 - No PR, merge or change to main was made.
+
+## Continuation — 2026-11-26
+
+- Re-verified the live work-branch reference rather than relying on the earlier handoff SHA. The branch had advanced to `249e8125395ee882c7e3d3ed549821a446dfa23b` before this continuation.
+- Confirmed the shared source-grounded framework reaches all five existing role prompts. The non-Builder agents call `load_skill_prompt()`, which delegates to `load_agent_prompt()`; Builder calls the common loader directly. Added `breakdown/tests/test_agent_prompt_framework.py` to guard composition of the framework and each colocated `SKILL.md`.
+- Hardened Host build admission to compare Storage digests with the `ArtifactRef.digest` values for `approved_source_checkpoint`, `frozen_plan_hash`, and `approved_plan_revision`, matching the integrity checks already applied to other build-bound artifacts.
+- Added parameterized regression coverage in `breakdown/system/tests/test_engine_lifecycle.py` for tampering with each of those three references; expected behavior is to block before sandbox creation.
+- Removed the remaining stale `breakdown/planner/builder/tests/__init__.py` nested package placeholder.
+- These changes were committed on `refactor/agent-source-grounded-framework`; no change was made to `main`, no PR was opened, and no merge or deployment was performed.
+
+## Continuation verification and remaining gaps
+
+- Re-fetched the changed engine and test files from the work branch and confirmed the new digest checks and regression cases are present.
+- Confirmed the removed nested Builder test package path now returns 404 on the work branch.
+- Local pytest, Ruff, formatting, mypy and offline evaluation remain unexecuted. GitHub status/workflow checks are not a substitute for local execution.
+- Structural target gaps remain unchanged: no sibling `breakdown/discovery/` agent or Discovery contracts/registration; the executable workflow still starts at `research_proposal` and retains the separate Research approval stage; Runtime is still under `system/runtime` rather than the target Host package; provider-neutral tools are still under `system/tools`, with no `agents/tools` adapter package; there is no run/package-bound Host InvocationGrant. The accepted workflow and package migration therefore remain incomplete.
+
