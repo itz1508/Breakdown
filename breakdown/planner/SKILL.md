@@ -16,7 +16,6 @@ description: Creates the single authoritative ImplementationPlan with cohesive o
 - `source_search`
 - `source_read`
 - `memory_list`, `memory_read`, `memory_search` (lessons and prior context only; verify current source)
-- `semantic_search` (discovery only; inspect the referenced source)
 
 Constraint keywords **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, and **MAY** are used in their RFC 2119 sense. Programmatic analysis may help check plan consistency; it does not grant execution, approval, or file-write authority.
 
