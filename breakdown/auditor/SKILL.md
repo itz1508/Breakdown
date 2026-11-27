@@ -16,8 +16,9 @@ description: Creates the research proposal and reviews findings against reposito
 - `capability_inspect`
 - `source_search`
 - `source_read`
-- `memory_list`, `memory_read`, `memory_search` (historical context only)
+- `memory_list`, `memory_read`, `memory_search` (historical context only; verify material claims against current sources)
 - `semantic_search` (discovery only; verify material claims against source)
+- `memory_list`, `memory_read`, `memory_search` (historical context only; verify material claims against current sources)
 
 Constraint keywords **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, and **MAY** are used in their RFC 2119 sense. Programmatic comparison is a processing technique, not additional authority or a new tool capability.
 
