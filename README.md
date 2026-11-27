@@ -49,6 +49,11 @@ The currently implemented agent packages are Researcher, Auditor, Coder, Planner
 
 Runtime is the authority for progression and source effects. Agents return bounded work and evidence; they do not self-advance workflow state or authorize synchronization.
 
+## Live model tiers
+
+Live builds require a dedicated verifier model distinct from the Builder model:
+`BREAKDOWN_MODEL_BUILDER` and `BREAKDOWN_MODEL_VERIFIER`. The verifier is a separate evaluation invocation; if it is missing, unavailable, or returns an incomplete/non-valid result, synchronization is blocked. A configured verifier does not replace execution of validation commands: command-based checks require actual execution output before they can be accepted.
+
 ## Development
 
 ```bash
