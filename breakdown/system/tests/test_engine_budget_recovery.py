@@ -169,7 +169,7 @@ class Harness:
         from breakdown.contracts import build_contract_registry
         from breakdown.system.tools.toolkit import RoleToolkit
         from breakdown.auditor.agent import Auditor
-        from breakdown.planner.builder.agent import Builder
+        from breakdown.builder.agent import Builder
         from breakdown.planner.agent import Planner
         from breakdown.researcher.agent import Researcher
 
