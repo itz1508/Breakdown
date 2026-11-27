@@ -94,8 +94,8 @@ class ScriptedVerifierBackend:
                     {
                         "check_ref": "task-1",
                         "criterion": "valid",
-                        "expected": "subtract(3, 2) == 1",
-                        "actual_observation": "test fixture observed the expected subtraction implementation",
+                        "expected": "src/calc.py defines subtract(a, b) and returns a - b",
+                        "actual_observation": "test fixture inspected the sandbox source and observed subtract returning a - b",
                     }
                 ]
             },
