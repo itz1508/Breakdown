@@ -182,7 +182,7 @@ def test_agent_skills_are_colocated_with_packages() -> None:
         package / "auditor" / "SKILL.md",
         package / "coder" / "SKILL.md",
         package / "planner" / "SKILL.md",
-        package / "planner" / "builder" / "SKILL.md",
+        package / "builder" / "SKILL.md,
     )
     assert all(path.is_file() for path in skill_paths)
 
