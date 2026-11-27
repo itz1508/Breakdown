@@ -331,6 +331,88 @@ def test_verification_rejects_wrong_and_missing_task_refs() -> None:
     assert partial_verdicts[1].criterion is CriterionResult.NOT_VALID
 
 
+def test_offline_demo_verifier_checks_actual_sandbox_observation() -> None:
+    import asyncio
+
+    from breakdown.shared.models import ObservedFile, VerificationTaskView
+    from breakdown.system.runtime.demo import OfflineDemoRoleBackend
+
+    verification_input = BuildVerificationInput(
+        run_id="demo-run",
+        tasks=(
+            VerificationTaskView(
+                task_ref="demo-task-1",
+                description="create the demo change record",
+                expected_result="DEMO_CHANGE.md contains the request text provided to this run",
+                validation_steps=(
+                    ValidationStep(
+                        step_id="demo-v-1",
+                        description="inspect demo change file",
+                        command_or_observation="read DEMO_CHANGE.md and verify the exact request text is present",
+                        expected="the current request text is present",
+                        kind="observation",
+                    ),
+                ),
+                observed_files=(
+                    ObservedFile(
+                        path="DEMO_CHANGE.md",
+                        disposition="create",
+                        content="# Demo change\\n\\nRequest: exact demo request\\n",
+                        status="read",
+                    ),
+                ),
+            ),
+        ),
+    )
+    backend = OfflineDemoRoleBackend("exact demo request")
+    response = asyncio.run(backend.generate(verification_request(verification_input)))
+    verdicts = parse_verification(response, verification_input)
+
+    assert verdicts[0].criterion is CriterionResult.VALID
+    assert "Host observed the exact request text" in verdicts[0].actual_observation
+
+
+def test_offline_demo_verifier_does_not_claim_unexecuted_commands() -> None:
+    import asyncio
+
+    from breakdown.shared.models import ObservedFile, VerificationTaskView
+    from breakdown.system.runtime.demo import OfflineDemoRoleBackend
+
+    verification_input = BuildVerificationInput(
+        run_id="demo-run",
+        tasks=(
+            VerificationTaskView(
+                task_ref="demo-task-1",
+                description="run tests",
+                expected_result="pytest passes",
+                validation_steps=(
+                    ValidationStep(
+                        step_id="demo-v-1",
+                        description="run pytest",
+                        command_or_observation="pytest -q",
+                        expected="all tests pass",
+                        kind="command",
+                    ),
+                ),
+                observed_files=(
+                    ObservedFile(
+                        path="DEMO_CHANGE.md",
+                        disposition="create",
+                        content="Request: exact demo request",
+                        status="read",
+                    ),
+                ),
+            ),
+        ),
+    )
+    backend = OfflineDemoRoleBackend("exact demo request")
+    response = asyncio.run(backend.generate(verification_request(verification_input)))
+    verdicts = parse_verification(response, verification_input)
+
+    assert verdicts[0].criterion is CriterionResult.UNCERTAINTY
+    assert "cannot execute command steps" in verdicts[0].actual_observation
+
+
 def test_verifier_happy_path_authorizes_sync(tmp_path: Path) -> None:
     """D35: builder + verifier all valid -> sync authorized, run succeeds."""
     e2e = _E2E(tmp_path)
