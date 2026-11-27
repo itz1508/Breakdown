@@ -583,11 +583,46 @@ async def test_planner_rejects_requirement_not_backed_by_reviewed_finding(
         await planner.create_implementation_plan(payload, _context("implementation_planning"))
 
 
-async def test_builder_completed_prepares_sync(fake_coding_backend: Any, tmp_path: Path) -> None:
-    builder = Builder(backend=fake_coding_backend, sandbox_root=tmp_path / "sandbox")
+async def test_builder_reports_only_backend_observed_changed_paths(tmp_path: Path) -> None:
+    backend = FakeCodingBackend(
+        CodingBackendResult(
+            execution_result=ExecutionResult.COMPLETED,
+            observation="updated src/calc.py",
+            reported_changed_paths=("src/calc.py",),
+        )
+    )
+    builder = Builder(backend=backend, sandbox_root=tmp_path / "sandbox")
     output = await builder.execute_build(_build_input(), _context("build_execution"))
     assert output.synchronization_prepared is True
-    assert all(result.criterion is CriterionResult.VALID for result in output.task_results)
+    assert output.applied_changes == ("src/calc.py",)
+    assert output.observed_changed_paths == ("src/calc.py",)
+    assert output.task_results[0].reported_changed_paths == ("src/calc.py",)
+
+
+async def test_builder_rejects_backend_reported_path_outside_task_scope(tmp_path: Path) -> None:
+    backend = FakeCodingBackend(
+        CodingBackendResult(
+            execution_result=ExecutionResult.COMPLETED,
+            observation="attempted an unapproved path",
+            reported_changed_paths=("src/calc.py", "rogue.py"),
+        )
+    )
+    builder = Builder(backend=backend, sandbox_root=tmp_path / "sandbox")
+    output = await builder.execute_build(_build_input(), _context("build_execution"))
+    assert output.synchronization_prepared is False
+    assert output.task_results[0].criterion is CriterionResult.NOT_VALID
+    assert "outside the exact approved task scope" in output.task_results[0].actual_observation
+    assert output.observed_changed_paths == ("src/calc.py", "rogue.py")
+
+
+async def test_builder_marks_completed_backend_without_change_receipt_uncertain(
+    fake_coding_backend: Any, tmp_path: Path
+) -> None:
+    builder = Builder(backend=fake_coding_backend, sandbox_root=tmp_path / "sandbox")
+    output = await builder.execute_build(_build_input(), _context("build_execution"))
+    assert output.synchronization_prepared is False
+    assert output.task_results[0].criterion is CriterionResult.UNCERTAINTY
+    assert "reported no changed paths" in output.task_results[0].actual_observation
 
 
 async def test_builder_failure_stops_and_is_not_valid(fake_coding_backend: Any, tmp_path: Path) -> None:
