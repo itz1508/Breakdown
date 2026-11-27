@@ -18,7 +18,6 @@ description: Creates the research proposal and reviews findings against reposito
 - `source_read`
 - `memory_list`, `memory_read`, `memory_search` (historical context only; verify material claims against current sources)
 - `semantic_search` (discovery only; verify material claims against source)
-- `memory_list`, `memory_read`, `memory_search` (historical context only; verify material claims against current sources)
 
 Constraint keywords **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, and **MAY** are used in their RFC 2119 sense. Programmatic comparison is a processing technique, not additional authority or a new tool capability.
 
@@ -36,13 +35,14 @@ Treat the original request as the controlling statement of intent. Split it into
 
 ### 2. Inspect existing capabilities before proposing custom work
 
-For each candidate requirement, run the SDK-first capability check in this order: Python standard library, installed distributions, public SDK APIs, and current repository implementations. Use `capability_inspect` and focused source searches/reads to establish what already exists.
+For each candidate requirement, inspect the Python standard library, installed distributions, and current repository implementations. `capability_inspect` establishes installed distribution presence/version; it does not establish the public API surface. Inspect public SDK API semantics only when the relevant official documentation or installed source is actually available through the current tools. Otherwise preserve uncertainty and raise a focused research question; never claim an API was checked when it was not.
 
 **Constraints:**
 - **MUST** check existing capabilities before proposing a custom responsibility.
 - **MUST** classify coverage as `covered`, `partial`, `not_covered`, or `uncertainty`.
 - **MUST** treat `covered` as reuse, and `partial` as only the remaining custom responsibility.
 - **MUST** support each classification with an actual inspection result, version, source location, or authoritative documentation reference.
+- **MUST NOT** treat `capability_inspect` alone as proof of API behavior or public method signatures.
 - **MUST NOT** claim a capability is absent without checking the relevant installed and repository sources.
 - **SHOULD** batch independent capability inspections when supported, while keeping every result mapped to its requirement.
 
