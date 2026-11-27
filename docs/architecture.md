@@ -4,13 +4,13 @@
 
 `breakdown/__main__.py` is the composition root. It creates the agent registry and passes the registry and approved system capabilities into the host-controlled runtime.
 
-The package has five agent identities:
+The current implementation has five agent identities; the accepted target has six. Discovery is not yet implemented or registered in the current executable workflow:
 
 - Researcher: `breakdown/researcher/`
 - Auditor: `breakdown/auditor/`
 - Coder: `breakdown/coder/`
 - Planner: `breakdown/planner/`
-- Builder: `breakdown/planner/builder/`
+- Builder: `breakdown/builder/`
 
 Coder is independent, not an Auditor-owned sub-role. Builder is a separate agent identity placed under Planner's package path and does not call the shared model loop.
 
@@ -31,7 +31,7 @@ Coder is independent, not an Auditor-owned sub-role. Builder is a separate agent
 
 Agent implementations may depend on shared contracts and the injected system-tool interface. They must not import workflow runtime internals, storage implementations, or sibling agents. Runtime may construct and invoke agents through explicit contracts. System tools and storage must not import agent implementations.
 
-Builder is intentionally excluded from `shared/model_loop.py`; it executes through its coding backend inside the authorized sandbox.
+Builder is an independent sibling package, intentionally excluded from `shared/model_loop.py`; it receives shared and role-specific instructions through the coding request and executes through its coding backend inside the authorized sandbox. The shared `breakdown/agents/` prompt package does not own an agent identity.
 
 ## Safety properties
 
