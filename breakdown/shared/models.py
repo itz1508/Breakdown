@@ -1010,6 +1010,7 @@ class ObservedFile(StrictModel):
 
     path: str = Field(min_length=1)
     content: str
+    status: Literal["read", "missing", "unavailable"]
     truncated: bool = False
 
 
@@ -1019,21 +1020,21 @@ class VerificationTaskView(StrictModel):
     task_ref: str = Field(min_length=1)
     description: str
     expected_result: str
-    validation_steps: tuple[str, ...]
+    validation_steps: tuple[ValidationStep, ...]
     observed_files: tuple[ObservedFile, ...]
 
 
 class BuildVerificationInput(StrictModel):
     """Input to the independent verifier for a completed run."""
 
-    run_id: str
+    run_id: str = Field(min_length=1)
     tasks: tuple[VerificationTaskView, ...] = Field(min_length=1)
 
 
 class BuildVerificationOutput(StrictModel):
     """Output from the independent verifier: per-criterion verdicts."""
 
-    task_verifications: tuple[CheckResult, ...] = Field(min_length=0)
+    task_verifications: tuple[CheckResult, ...] = Field(min_length=1)
 
 
 # --- Cross-run memory (Phase 3b, D36) ---
