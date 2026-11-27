@@ -196,7 +196,8 @@ class OfflineDemoRoleBackend:
                     if file.status == "read" and not file.truncated
                 ]
                 has_request_text = any(
-                    self._request_text in file.content for file in observed
+                    file.path == "DEMO_CHANGE.md" and self._request_text in file.content
+                    for file in observed
                 )
                 if command_steps:
                     criterion = CriterionResult.UNCERTAINTY
