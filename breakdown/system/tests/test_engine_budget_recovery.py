@@ -9,10 +9,6 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from breakdown.system.runtime.approvals import ApprovalManager
-from breakdown.system.storage.artifact_store import ArtifactStore
-from breakdown.system.runtime.engine import EngineStores, WorkflowEngine, load_workflow
-from breakdown.system.storage.events import EventStore
 from breakdown.shared.models import (
     CodingBackendResult,
     EventType,
@@ -22,10 +18,14 @@ from breakdown.shared.models import (
     RunState,
     TokenUsage,
 )
-from breakdown.system.storage.run_store import RunStore
+from breakdown.system.runtime.approvals import ApprovalManager
+from breakdown.system.runtime.engine import EngineStores, WorkflowEngine, load_workflow
 from breakdown.system.safety import SafetyBoundary
+from breakdown.system.storage.artifact_store import ArtifactStore
+from breakdown.system.storage.events import EventStore
+from breakdown.system.storage.run_store import RunStore
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 # Shared e2e constants live in test_engine_lifecycle.py; load by path because
 # pytest runs in importlib mode (no sys.path insertion for sibling test modules).
