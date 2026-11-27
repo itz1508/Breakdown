@@ -31,9 +31,11 @@ from breakdown.shared.models import (
     PreflightResult,
     ProcessingPlan,
     ResearchExecutionInput,
+    ResearchExecutionOutput,
     ResearchProposalInput,
     ResearchProposalOutput,
     ResearchRecord,
+    ResearchTodo,
     RunRef,
     SourceCheckpoint,
     StageContext,
@@ -353,7 +355,7 @@ async def test_auditor_rejects_dropped_contradiction(fake_role_backend: Any, tar
         await auditor.review_research_findings(payload, _context("findings_review"))
 
 
-def test_researcher_accepts_empty_approved_research_scope(target_repo: Path) -> None:
+def test_researcher_accepts_empty_approved_research_scope() -> None:
     proposal = _proposal_output().model_copy(update={"research_questions": ()})
     input_value = ResearchExecutionInput(
         research_proposal=proposal,
