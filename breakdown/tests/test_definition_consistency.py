@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 import yaml
-from breakdown.planner.builder.agent import Builder
+from breakdown.builder.agent import Builder
 from breakdown.shared.models import (
     ArtifactRef,
     BuildExecutionInput,
