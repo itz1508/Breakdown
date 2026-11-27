@@ -141,8 +141,9 @@ def _finish_demo_outputs(proposal: dict[str, Any], research: dict[str, Any]) -> 
                         {
                             "step_id": "demo-v-1",
                             "description": "file exists",
-                            "command_or_observation": "read DEMO_CHANGE.md",
-                            "expected": "present",
+                            "command_or_observation": "read DEMO_CHANGE.md and verify the exact request text is present",
+                            "expected": "the current request text is present",
+                            "kind": "observation",
                         }
                     ],
                     "required_evidence": ["file content"],
