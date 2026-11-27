@@ -736,7 +736,7 @@ role_guidance:
     researcher: breakdown/researcher/SKILL.md
     coder: breakdown/coder/SKILL.md
     planner: breakdown/planner/SKILL.md
-    builder: breakdown/planner/builder/SKILL.md
+    builder: breakdown/builder/SKILL.md
   semantics:
     executable: false
     workflow_authority: false
