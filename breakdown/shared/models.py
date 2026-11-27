@@ -302,7 +302,7 @@ class ResearchTodoItem(StrictModel):
 
 
 class ResearchTodo(StrictModel):
-    items: tuple[ResearchTodoItem, ...] = Field(min_length=1)
+    items: tuple[ResearchTodoItem, ...] = ()
 
 
 class EvidenceRecord(StrictModel):
