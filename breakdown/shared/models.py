@@ -509,6 +509,7 @@ class ValidationStep(StrictModel):
     description: str = Field(min_length=1)
     command_or_observation: str = Field(min_length=1)
     expected: str = Field(min_length=1)
+    kind: Literal["command", "observation"] = "command"
 
 
 class BuildTask(StrictModel):
