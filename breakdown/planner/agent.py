@@ -61,7 +61,12 @@ class Planner:
             "compatibility, target-path ownership, security, fixtures, and verification coverage. "
             "Resolve only planning-owned gaps. Preserve unresolved questions, map every task to "
             "reviewed requirement/evidence, and produce cohesive independently verifiable tasks "
-            "with target paths, expected outcomes, and validation steps. Do not invent evidence."
+            "with target paths, expected outcomes, and typed validation steps. Use kind='observation' "
+            "for checks that can be established from the inspected resulting files. Use kind='command' "
+            "only when an authorized command-execution capability exists and its real output will be "
+            "captured. The current Builder/backend does not execute validation commands, so do not "
+            "schedule command checks as if they can run; retain that verification need as unresolved. "
+            "Do not invent evidence."
         )
         request = RoleBackendRequest(
             operation="create_implementation_plan",
@@ -143,6 +148,15 @@ def _run_planning_gap_scan(
             )
         if len(task.requirement_refs) != len(task_requirements):
             gaps.append(f"task {task.task_id!r} contains duplicate requirement references")
+
+        command_steps = [
+            step.step_id for step in task.validation_steps if step.kind == "command"
+        ]
+        if command_steps:
+            gaps.append(
+                f"task {task.task_id!r} requires command execution that the current sandbox backend "
+                f"does not provide: {sorted(command_steps)}"
+            )
 
         task_sources = set(task.source_evidence)
         if not task_sources:
