@@ -781,10 +781,18 @@ class WorkflowEngine:
             )
             if frozen.plan != plan or input_value.implementation_plan != plan:
                 return "approved implementation plan differs from the frozen plan"
+            approved_revision_ref = artifacts["approved_plan_revision"]
+            if self.stores.artifacts.get_digest(
+                approved_revision_ref.artifact_key, approved_revision_ref.revision
+            ) != approved_revision_ref.digest:
+                return "approved plan revision artifact digest does not match Storage"
+            approved_revision_value = self.stores.artifacts.get_model(
+                StoredValue, approved_revision_ref.artifact_key, approved_revision_ref.revision
+            ).value
             if (
                 approval.implementation_plan_revision != plan.revision
                 or input_value.approved_plan_revision != plan.revision
-                or self._load_value(record, "approved_plan_revision") != plan.revision
+                or approved_revision_value != plan.revision
             ):
                 return "approved plan revision does not match the frozen implementation plan"
 
@@ -799,6 +807,10 @@ class WorkflowEngine:
                 SourceCheckpoint, source_ref.artifact_key, source_ref.revision
             )
             approved_checkpoint_ref = artifacts["approved_source_checkpoint"]
+            if self.stores.artifacts.get_digest(
+                approved_checkpoint_ref.artifact_key, approved_checkpoint_ref.revision
+            ) != approved_checkpoint_ref.digest:
+                return "approved source checkpoint digest does not match Storage"
             approved_checkpoint = self.stores.artifacts.get_model(
                 SourceCheckpoint,
                 approved_checkpoint_ref.artifact_key,
@@ -819,6 +831,10 @@ class WorkflowEngine:
                 plan, approved_checkpoint, record.definition_version
             )
             frozen_hash_ref = artifacts["frozen_plan_hash"]
+            if self.stores.artifacts.get_digest(
+                frozen_hash_ref.artifact_key, frozen_hash_ref.revision
+            ) != frozen_hash_ref.digest:
+                return "frozen plan hash artifact digest does not match Storage"
             frozen_hash_value = self.stores.artifacts.get_model(
                 StoredValue, frozen_hash_ref.artifact_key, frozen_hash_ref.revision
             ).value
