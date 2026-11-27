@@ -275,6 +275,26 @@ async def test_auditor_findings_preserve_contradictions(fake_role_backend: Any, 
     assert {contradiction.topic for contradiction in output.contradictions_preserved} == {"naming"}
 
 
+async def test_auditor_rejects_unknown_requirement_references(
+    fake_role_backend: Any, target_repo: Path
+) -> None:
+    invalid_finding = {
+        **FINDINGS_PAYLOAD["classified_findings"][0],
+        "requirement_ref": "requirement-not-in-proposal",
+    }
+    bad = {**FINDINGS_PAYLOAD, "classified_findings": [invalid_finding]}
+    fake_role_backend.set_output("review_research_findings", bad)
+    auditor = Auditor(backend=fake_role_backend, tools=RoleToolkit(role="auditor", root=target_repo))
+    payload = FindingsReviewInput(
+        research_record=_research_record(),
+        research_proposal=_proposal_output(),
+        exact_user_intent="x",
+        source_checkpoint=_checkpoint(),
+    )
+    with pytest.raises(RoleOperationError, match="unknown requirements"):
+        await auditor.review_research_findings(payload, _context("findings_review"))
+
+
 async def test_auditor_rejects_dropped_contradiction(fake_role_backend: Any, target_repo: Path) -> None:
     dropped = {**FINDINGS_PAYLOAD, "contradictions_preserved": []}
     fake_role_backend.set_output("review_research_findings", dropped)
@@ -428,6 +448,30 @@ def test_planner_overlap_rejected_by_model() -> None:
         ImplementationPlanningOutput.model_validate(payload)
 
 
+async def test_planner_rejects_requirement_not_backed_by_reviewed_finding(
+    fake_role_backend: Any, target_repo: Path
+) -> None:
+    invalid_plan = {
+        **PLAN_PAYLOAD,
+        "implementation_plan": {
+            **PLAN_PAYLOAD["implementation_plan"],
+            "requirement_refs": ["req-1", "requirement-not-reviewed"],
+        },
+    }
+    fake_role_backend.set_output("create_implementation_plan", invalid_plan)
+    planner = Planner(backend=fake_role_backend, tools=RoleToolkit(role="planner", root=target_repo))
+    payload = ImplementationPlanningInput(
+        processing_plan=_processing_plan("implementation_plan"),
+        classified_findings=tuple(
+            ClassifiedFinding.model_validate(row) for row in FINDINGS_PAYLOAD["classified_findings"]
+        ),
+        exact_user_intent="x",
+        source_checkpoint=_checkpoint(),
+    )
+    with pytest.raises(RoleOperationError, match="without reviewed findings"):
+        await planner.create_implementation_plan(payload, _context("implementation_planning"))
+
+
 async def test_builder_completed_prepares_sync(fake_coding_backend: Any, tmp_path: Path) -> None:
     builder = Builder(backend=fake_coding_backend, sandbox_root=tmp_path / "sandbox")
     output = await builder.execute_build(_build_input(), _context("build_execution"))
@@ -471,6 +515,23 @@ async def test_coder_returns_file_evidence(fake_role_backend: Any, target_repo: 
     output = await coder.analyze_code(request, _context("findings_review"))
     assert output.file_evidence
     assert output.criterion is CriterionResult.VALID
+
+
+async def test_coder_rejects_evidence_outside_requested_scope(
+    fake_role_backend: Any, target_repo: Path
+) -> None:
+    fake_role_backend.set_output(
+        "analyze_code",
+        {
+            "answer": "claim from another file",
+            "file_evidence": [{"path": "README.md", "locator": "line 1", "excerpt": "# project"}],
+            "criterion": "valid",
+        },
+    )
+    coder = Coder(backend=fake_role_backend, tools=RoleToolkit(role="coder", root=target_repo))
+    request = CodeAnalysisRequest(question="where is add?", scope_paths=("src/calc.py",))
+    with pytest.raises(RoleOperationError, match="outside requested scope"):
+        await coder.analyze_code(request, _context("findings_review"))
 
 
 def test_roles_import_only_shared_layers() -> None:
