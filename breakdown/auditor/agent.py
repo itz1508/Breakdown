@@ -143,11 +143,19 @@ def _validate_findings(output: FindingsReviewOutput, input_value: FindingsReview
         raise RoleOperationError("research evidence identifiers must be unique")
     known_evidence_ids = set(evidence_by_id)
     for finding in output.classified_findings:
-        for trace_step in finding.decision_trace:
-            if trace_step.evidence_ref and trace_step.evidence_ref not in known_evidence_ids:
+        referenced_evidence = {
+            trace_step.evidence_ref
+            for trace_step in finding.decision_trace
+            if trace_step.evidence_ref
+        }
+        if finding.status is not FindingStatus.UNRESOLVED and not referenced_evidence:
+            raise RoleOperationError(
+                f"finding {finding.finding_id!r} requires evidence for status {finding.status.value!r}"
+            )
+        for evidence_ref in referenced_evidence:
+            if evidence_ref not in known_evidence_ids:
                 raise RoleOperationError(
-                    f"finding {finding.finding_id!r} references unknown evidence "
-                    f"{trace_step.evidence_ref!r}"
+                    f"finding {finding.finding_id!r} references unknown evidence {evidence_ref!r}"
                 )
 
     input_contradictions = {
@@ -169,28 +177,55 @@ def _validate_findings(output: FindingsReviewOutput, input_value: FindingsReview
                 f"{sorted(unknown_refs)}"
             )
 
-    input_fixture_ids = {fixture.fixture_id for fixture in research.fixture_specifications}
-    output_fixture_ids = {
-        fixture.fixture_id for fixture in output.reviewed_fixture_specifications
+    input_fixtures = {fixture.fixture_id: fixture for fixture in research.fixture_specifications}
+    output_fixtures = {
+        fixture.fixture_id: fixture for fixture in output.reviewed_fixture_specifications
     }
-    if input_fixture_ids != output_fixture_ids:
+    if len(input_fixtures) != len(research.fixture_specifications) or len(output_fixtures) != len(
+        output.reviewed_fixture_specifications
+    ):
+        raise RoleOperationError("fixture identifiers must be unique")
+    if set(input_fixtures) != set(output_fixtures):
         raise RoleOperationError(
             "reviewed fixture specifications must preserve source fixture identifiers; "
-            f"missing={sorted(input_fixture_ids - output_fixture_ids)}, "
-            f"unknown={sorted(output_fixture_ids - input_fixture_ids)}"
+            f"missing={sorted(set(input_fixtures) - set(output_fixtures))}, "
+            f"unknown={sorted(set(output_fixtures) - set(input_fixtures))}"
+        )
+    changed_fixtures = [
+        fixture_id
+        for fixture_id, source_fixture in input_fixtures.items()
+        if output_fixtures[fixture_id] != source_fixture
+    ]
+    if changed_fixtures:
+        raise RoleOperationError(
+            f"reviewed fixture specifications changed Researcher-owned content: {sorted(changed_fixtures)}"
         )
 
-    input_unresolved_ids = {
-        question.question_id for question in research.unresolved_questions
+    input_unresolved = {
+        question.question_id: question for question in research.unresolved_questions
     }
-    output_unresolved_ids = {
-        question.question_id for question in output.reviewed_unresolved_questions
+    output_unresolved = {
+        question.question_id: question for question in output.reviewed_unresolved_questions
     }
-    if input_unresolved_ids != output_unresolved_ids:
+    if len(input_unresolved) != len(research.unresolved_questions) or len(output_unresolved) != len(
+        output.reviewed_unresolved_questions
+    ):
+        raise RoleOperationError("unresolved question identifiers must be unique")
+    if set(input_unresolved) != set(output_unresolved):
         raise RoleOperationError(
             "reviewed unresolved questions must preserve source question identifiers; "
-            f"missing={sorted(input_unresolved_ids - output_unresolved_ids)}, "
-            f"unknown={sorted(output_unresolved_ids - input_unresolved_ids)}"
+            f"missing={sorted(set(input_unresolved) - set(output_unresolved))}, "
+            f"unknown={sorted(set(output_unresolved) - set(input_unresolved))}"
+        )
+    changed_questions = [
+        question_id
+        for question_id, source_question in input_unresolved.items()
+        if output_unresolved[question_id] != source_question
+    ]
+    if changed_questions:
+        raise RoleOperationError(
+            "reviewed unresolved questions must preserve exact source content: "
+            f"{sorted(changed_questions)}"
         )
 
     if output.normalized_evidence:
