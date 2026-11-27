@@ -208,13 +208,20 @@ def test_coding_backend_writes_approved_path(tmp_path: Path) -> None:
 
     sandbox = tmp_path / "sandbox"
     (sandbox / "src").mkdir(parents=True)
+    bodies: list[dict[str, Any]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
-        payload = json.dumps({"src/calc.py": "def subtract(a, b):\n    return a - b\n"})
+        bodies.append(json.loads(request.content))
+        payload = json.dumps({"src/calc.py": "def subtract(a, b):\\n    return a - b\\n"})
         return httpx.Response(200, json=_completion(content=payload))
 
     backend = OpenAICompatibleCodingBackend(client=_client(handler), model="m")
-    result = asyncio.run(backend.apply_task(_coding_request(sandbox)))
+    coding_request = _coding_request(sandbox).model_copy(
+        update={"agent_instructions": "Builder-specific instructions."}
+    )
+    result = asyncio.run(backend.apply_task(coding_request))
+    assert bodies[0]["messages"][0]["content"].startswith("Builder-specific instructions.")
+    assert "Execution invariant" in bodies[0]["messages"][0]["content"]
     assert result.execution_result is ExecutionResult.COMPLETED
     assert result.reported_changed_paths == ("src/calc.py",)
     assert "def subtract" in (sandbox / "src" / "calc.py").read_text(encoding="utf-8")
