@@ -16,13 +16,13 @@ from typing import Literal
 
 from breakdown.shared.base import RoleOperationError
 from breakdown.shared.model_loop import generate_structured, load_skill_prompt, render_json
-from breakdown.shared.models import RoleBackend
 from breakdown.shared.models import (
     BaselineMap,
     NormalizedEvidence,
     ResearchExecutionInput,
     ResearchExecutionOutput,
     ResearchRecord,
+    RoleBackend,
     RoleBackendRequest,
     ScaffoldingEntry,
     SourceCheckpoint,
