@@ -12,6 +12,7 @@ from breakdown.shared.models import (
     RoleBackendResponse,
     TaskResult,
     TokenUsage,
+    ValidationStep,
 )
 from breakdown.system.runtime.verification import (
     build_verification_input,
@@ -36,7 +37,7 @@ class _ScriptedVerifierBackend:
                     {
                         "check_ref": "task-1",
                         "criterion": self.criterion.value,
-                        "expected": "subtract(3, 2) == 1",
+                        "expected": "src/calc.py defines subtract(a, b) and returns a - b",
                         "actual_observation": "verifier check result",
                     }
                 ]
@@ -157,9 +158,50 @@ def test_prompt_embeds_sandbox_and_validation_steps(tmp_path: Path) -> None:
 
     request = verification_request(verifier_input)
     assert "def subtract" in request.prompt
-    assert "pytest -q" in request.prompt
-    assert '"expected": "pass"' in request.prompt
+    assert "read src/calc.py and verify subtract is defined and returns a - b" in request.prompt
+    assert '"expected": "subtract is defined and returns a - b"' in request.prompt
     assert "independent build verifier" in request.system_prompt
+
+
+def test_verification_downgrades_unexecuted_command_to_uncertainty() -> None:
+    verifier_input = BuildVerificationInput(
+        run_id="run-1",
+        tasks=(
+            {
+                "task_ref": "task-1",
+                "description": "run unit tests",
+                "expected_result": "pytest passes",
+                "validation_steps": (
+                    ValidationStep(
+                        step_id="test-1",
+                        description="run pytest",
+                        command_or_observation="pytest -q",
+                        expected="all tests pass",
+                        kind="command",
+                    ),
+                ),
+                "observed_files": (),
+            },
+        ),
+    )
+    response = RoleBackendResponse(
+        structured_output={
+            "task_verifications": [
+                {
+                    "check_ref": "task-1",
+                    "criterion": "valid",
+                    "expected": "pytest passes",
+                    "actual_observation": "the source appears correct",
+                }
+            ]
+        },
+        text="",
+        provider="test",
+        model="test",
+    )
+    verdicts = parse_verification(response, verifier_input)
+    assert verdicts[0].criterion is CriterionResult.UNCERTAINTY
+    assert "were not executed by the Host" in verdicts[0].actual_observation
 
 
 def test_verification_marks_missing_files_and_rejects_valid_verdict(tmp_path: Path) -> None:
