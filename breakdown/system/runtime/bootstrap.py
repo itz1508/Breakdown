@@ -239,15 +239,15 @@ def build_runtime(
     if not offline_demo:
         for binding in bindings.all():
             validate_binding(binding)
-        if role_backends is None or role_backends.get("verifier") is None:
-            raise BootstrapError(
-                "live runtime requires a separately injected independent verifier backend"
-            )
         _validate_binding_coverage(
             definition,
             bindings,
             additional_role_operations={"verifier": {"verify_build_task"}},
         )
+        if role_backends is None or role_backends.get("verifier") is None:
+            raise BootstrapError(
+                "live runtime requires a separately injected independent verifier backend"
+            )
     target_root = settings.target_repo.resolve()
     state_root = (target_root / settings.state_root).resolve()
     state_root.mkdir(parents=True, exist_ok=True)
