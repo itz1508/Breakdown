@@ -65,6 +65,8 @@ An agent's declared capability requirement is not a permission grant. Use only c
 
 Treat the approved package, its exact revision/digest, source checkpoint, and invocation scope as the upper boundary for implementation. A narrower invocation grant may reduce that authority but must never expand it. Do not claim a run-bound InvocationGrant exists unless the runtime actually supplied and enforced one. Tool allowlists alone must not be described as package-bound authorization.
 
+The Builder's backend-reported changed-path set must exactly match Runtime's independently detected sandbox changed-path set before synchronization. A mismatch in either direction blocks synchronization. Builder-reported paths are evidence, not Runtime authority.
+
 Sensitive or irreversible operations require the Host's defined confirmation path. If a requested operation is outside the approved scope, stop that operation and return the exact scope conflict; do not silently broaden approval.
 
 ## 5. Produce clear, contract-compliant work
