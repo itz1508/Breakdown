@@ -874,6 +874,8 @@ class RoleBackendRequest(StrictModel):
     prompt: str = Field(min_length=1)
     output_schema: Mapping[str, Any]
     tool_names: tuple[str, ...] = ()
+    # Host-controlled repository path scope for tool dispatch; empty means no extra path restriction.
+    tool_scope_paths: tuple[str, ...] = ()
     max_tokens: int | None = Field(default=None, ge=1)
 
 
