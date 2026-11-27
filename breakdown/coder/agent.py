@@ -37,12 +37,16 @@ class Coder:
             f"Scope paths: {render_json(list(input_value.scope_paths))}\n"
             "Return file evidence for every claim."
         )
+        normalized_scope_paths = tuple(
+            _normalize_scope_path(path) for path in input_value.scope_paths
+        )
         request = RoleBackendRequest(
             operation="analyze_code",
             system_prompt=_CODER_BRIEF,
             prompt=prompt,
             output_schema=CodeAnalysisEvidence.model_json_schema(),
             tool_names=self._tools.allowed_names(),
+            tool_scope_paths=normalized_scope_paths,
         )
         output = await generate_structured(self, self._backend, request, CodeAnalysisEvidence)
         _validate_evidence_scope(output, input_value, self._tools)
