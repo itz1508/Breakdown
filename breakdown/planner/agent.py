@@ -108,6 +108,14 @@ def _run_planning_gap_scan(
     evidence_ids.update(item.evidence_ref for item in input_value.normalized_evidence)
     known_source_refs = finding_ids | evidence_ids
 
+    for decision in plan.technology_decisions:
+        unknown_refs = set(decision.evidence_refs) - known_source_refs
+        if unknown_refs:
+            gaps.append(
+                f"technology decision {decision.topic!r} references unknown evidence: "
+                f"{sorted(unknown_refs)}"
+            )
+
     fixture_ids = {
         fixture.fixture_id for fixture in input_value.reviewed_fixture_specifications
     }
@@ -165,14 +173,6 @@ def _run_planning_gap_scan(
             elif target.disposition == "create" and exists:
                 gaps.append(
                     f"task {task.task_id!r} targets an existing path for create: {target.path!r}"
-                )
-
-        for decision in plan.technology_decisions:
-            unknown_refs = set(decision.evidence_refs) - known_source_refs
-            if unknown_refs:
-                gaps.append(
-                    f"technology decision {decision.topic!r} references unknown evidence: "
-                    f"{sorted(unknown_refs)}"
                 )
 
         for dependency in task.depends_on:
