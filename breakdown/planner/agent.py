@@ -136,9 +136,11 @@ def _run_planning_gap_scan(
 
     task_by_id = {task.task_id: task for task in plan.tasks}
     sequence_by_id = {task.task_id: task.sequence for task in plan.tasks}
+    assigned_requirements: set[str] = set()
     root = repository_root.resolve()
     for task in plan.tasks:
         task_requirements = set(task.requirement_refs)
+        assigned_requirements.update(task_requirements)
         unknown_requirements = task_requirements - declared_requirements
         if unknown_requirements:
             gaps.append(
@@ -208,6 +210,13 @@ def _run_planning_gap_scan(
                 gaps.append(
                     f"task {task.task_id!r} depends on task {dependency!r} that does not precede it"
                 )
+
+    unassigned_requirements = declared_requirements - assigned_requirements
+    if unassigned_requirements:
+        gaps.append(
+            f"requirements declared by the plan but assigned to no task: "
+            f"{sorted(unassigned_requirements)}"
+        )
 
     if gaps:
         raise RoleOperationError("PlanningGapScan found material gaps: " + "; ".join(gaps))
