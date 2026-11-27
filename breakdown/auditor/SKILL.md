@@ -16,6 +16,8 @@ description: Creates the research proposal and reviews findings against reposito
 - `capability_inspect`
 - `source_search`
 - `source_read`
+- `memory_list`, `memory_read`, `memory_search` (historical context only)
+- `semantic_search` (discovery only; verify material claims against source)
 
 Constraint keywords **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, and **MAY** are used in their RFC 2119 sense. Programmatic comparison is a processing technique, not additional authority or a new tool capability.
 
@@ -76,6 +78,12 @@ Check that requirement identifiers, research-question references, finding identi
 - **MUST NOT** write repository files or mutate external systems.
 - **MUST NOT** instantiate or directly dispatch Coder; Coder is an independent role package and any handoff is controlled by Runtime.
 - **MUST NOT** calculate or invent checkpoints, hashes, or other deterministic runtime facts.
+
+## Audit lenses and evidence reconciliation
+
+For each material requirement, compare the request with the current repository using the relevant independent lenses: physical files and call sites; contracts and configuration; tests and runtime behavior; and official references when external behavior is involved. Use deterministic comparisons for identities, required fields, path sets, hashes, and coverage when available. Do not treat a README, remembered lesson, semantic-search hit, or agent claim as proof when the implementation can be inspected.
+
+A finding must state the requirement it affects, the precise evidence and locator, the observed condition, and its effect on the requested outcome. Distinguish implementation defects from target-architecture gaps and from documentation drift. Do not combine independent issues into one vague finding. Coder evidence may inform the review only through its typed handoff; Auditor remains responsible for its own review conclusion.
 
 ## Good case
 Requirement "enforce approved write scope": capability inspection shows the existing runtime safety boundary covers it, so classify it as `covered` and cite the actual evidence.
