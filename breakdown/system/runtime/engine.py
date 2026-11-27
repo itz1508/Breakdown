@@ -771,6 +771,7 @@ class WorkflowEngine:
         sync_result = self.stores.safety.authorize_synchronization(
             report=report,
             approved_paths=approved_paths,
+            builder_reported_paths=build_output.observed_changed_paths,
             task_results_valid=task_results_valid,
             integration_valid=integration_valid,
             bindings_current=self._approval_bindings_current(record),
