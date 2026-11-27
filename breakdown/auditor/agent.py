@@ -14,6 +14,7 @@ from __future__ import annotations
 from breakdown.shared.base import RoleOperationError
 from breakdown.shared.model_loop import generate_structured, load_skill_prompt, render_json
 from breakdown.shared.models import (
+    FindingStatus,
     FindingsReviewInput,
     FindingsReviewOutput,
     ResearchProposalInput,
