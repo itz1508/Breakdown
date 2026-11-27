@@ -84,6 +84,28 @@ class ScriptedBackend:
         )
 
 
+class ScriptedVerifierBackend:
+    """Test-only independent verifier fixture for offline budget tests."""
+
+    async def generate(self, request: Any) -> Any:
+        return RoleBackendResponse(
+            structured_output={
+                "task_verifications": [
+                    {
+                        "check_ref": "task-1",
+                        "criterion": "valid",
+                        "expected": "subtract(3, 2) == 1 and the test passes",
+                        "actual_observation": "test fixture observed the expected subtraction implementation",
+                    }
+                ]
+            },
+            text="",
+            usage=TokenUsage(input_tokens=20, output_tokens=20, tool_calls=0),
+            provider="test-fixture",
+            model="test-independent-verifier",
+        )
+
+
 class ScriptedCodingBackend:
     """apply_task outcomes by attempt: complete writes the file; blocked/failed do not."""
 
@@ -188,6 +210,7 @@ class Harness:
                 "researcher": Researcher(backend=self.backend, tools=RoleToolkit(role="researcher", root=self.target)),
                 "planner": Planner(backend=self.backend, tools=RoleToolkit(role="planner", root=self.target)),
                 "builder": Builder(backend=self.coding, sandbox_root=sandbox or self.target),
+                "verifier": ScriptedVerifierBackend(),
             }
 
         self.engine = WorkflowEngine(
@@ -196,6 +219,7 @@ class Harness:
             stores=EngineStores(artifacts=self.artifacts, events=self.events, runs=self.runs, safety=self.safety),
             approvals=self.approvals,
             role_factory=role_factory,
+            runtime_kind="offline_demo",
         )
 
     def run_to_terminal(self, max_steps: int = 40) -> Any:
