@@ -21,7 +21,7 @@ import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field, ValidationError
 from breakdown.shared.models import StrictModel
@@ -224,92 +224,41 @@ class WebSearchHit(StrictModel):
 class WebSearchRequest(StrictModel):
     query: str = Field(min_length=1)
     allowed_domains: tuple[str, ...] = ()
-    max_uses: int = Field(default=5, ge=1)
 
 
 class WebSearchResult(StrictModel):
+    status: Literal["completed", "no_results", "unavailable"]
     results: tuple[WebSearchHit, ...] = ()
-    uses_consumed: int = Field(default=1, ge=0)
+    uses_consumed: int = Field(default=0, ge=0)
     search_cost_tokens: int = Field(default=0, ge=0)
+    message: str = ""
 
 
 def web_search(request: WebSearchRequest, *, root: Path | None = None) -> WebSearchResult:
-    """Bounded client-side web search tool using httpx (D43)."""
-    if request.max_uses < 1:
-        raise ValueError("max_uses must be >= 1")
+    """Report provider availability without fabricating web-search results.
 
-    import re
-    from urllib.parse import urlparse
-
-    target_domain: str | None = None
-    site_match = re.search(r"(?:site:|domain:|https?://)([a-zA-Z0-9.-]+)", request.query)
-    if site_match:
-        target_domain = site_match.group(1).lower()
-
-    if request.allowed_domains and target_domain is not None:
-        normalized_allowed = tuple(d.lower().lstrip(".") for d in request.allowed_domains)
-        if not any(target_domain == d or target_domain.endswith("." + d) for d in normalized_allowed):
-            raise ToolNotAuthorized(f"domain {target_domain!r} is not in allowed_domains: {request.allowed_domains}")
-
-    # Check for encrypted or binary rejection
-    lower_query = request.query.lower()
-    if any(k in lower_query for k in ("encrypted", "pgp", "gpg", "binary", "octet-stream")):
-        raise ValueError("encrypted or binary content rejected")
-
-    hits: list[WebSearchHit] = []
-
-    # Optional live/network probe via httpx with graceful offline fallback
-    try:
-        import httpx
-
-        if request.query.startswith(("http://", "https://")):
-            url = request.query
-            parsed = urlparse(url)
-            domain = (parsed.hostname or "").lower()
-            if request.allowed_domains:
-                normalized_allowed = tuple(d.lower().lstrip(".") for d in request.allowed_domains)
-                if not any(domain == d or domain.endswith("." + d) for d in normalized_allowed):
-                    raise ToolNotAuthorized(f"domain {domain!r} is not in allowed_domains: {request.allowed_domains}")
-
-            with httpx.Client(timeout=2.0) as client:
-                resp = client.get(url)
-                ct = resp.headers.get("content-type", "").lower()
-                if any(b in ct for b in ("octet-stream", "encrypted", "pgp", "binary")):
-                    raise ValueError(f"encrypted or binary content rejected: {ct}")
-                if b"\x00" in resp.content[:512]:
-                    raise ValueError("binary content rejected")
-                hits.append(
-                    WebSearchHit(
-                        url=url,
-                        title=f"Content from {domain}",
-                        snippet=resp.text[:200],
-                        domain=domain,
-                    )
-                )
-    except ToolNotAuthorized:
-        raise
-    except ValueError:
-        raise
-    except Exception:
-        # Graceful offline fallback on network or connection errors
-        pass
-
-    if not hits:
-        domain_to_use = target_domain or (request.allowed_domains[0] if request.allowed_domains else "python.org")
-        hits.append(
-            WebSearchHit(
-                url=f"https://{domain_to_use}/search?q={request.query}",
-                title=f"Reference for {request.query}",
-                snippet=f"Documentation matches for {request.query}",
-                domain=domain_to_use,
+    The current Runtime has no configured search-provider adapter. Until one
+    is injected, return an explicit unavailable result and perform no network
+    request. Repository searches use source_search instead.
+    """
+    site_match = re.search(r"(?:site:|domain:)([a-zA-Z0-9.-]+)", request.query)
+    target_domain = site_match.group(1).lower() if site_match else None
+    if target_domain and request.allowed_domains:
+        normalized_allowed = tuple(domain.lower().lstrip(".") for domain in request.allowed_domains)
+        if not any(
+            target_domain == domain or target_domain.endswith("." + domain)
+            for domain in normalized_allowed
+        ):
+            raise ToolNotAuthorized(
+                f"domain {target_domain!r} is not in allowed_domains: {request.allowed_domains}"
             )
-        )
 
-    cost_tokens = max(10, (len(request.query) + sum(len(h.snippet) for h in hits)) // 4)
     return WebSearchResult(
-        results=tuple(hits),
-        uses_consumed=1,
-        search_cost_tokens=cost_tokens,
+        status="unavailable",
+        results=(),
+        uses_consumed=0,
+        search_cost_tokens=0,
+        message="No web search provider is configured; no external source was retrieved.",
     )
 
 
@@ -377,7 +326,7 @@ TOOLS: Mapping[str, CanonicalTool] = {
     ),
     "web_search": CanonicalTool(
         name="web_search",
-        description="Client-side bounded web search with allowed_domains and max_uses constraints.",
+        description="Reports external search as unavailable until a provider adapter is configured; never fabricates results.",
         input_model=WebSearchRequest,
         function=web_search,
         needs_root=True,
