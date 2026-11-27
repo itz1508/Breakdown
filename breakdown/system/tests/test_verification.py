@@ -413,6 +413,80 @@ def test_offline_demo_verifier_does_not_claim_unexecuted_commands() -> None:
     assert "cannot execute command steps" in verdicts[0].actual_observation
 
 
+def test_verification_rejects_missing_expected_result() -> None:
+    verifier_input = BuildVerificationInput(
+        run_id="run-1",
+        tasks=(
+            {
+                "task_ref": "task-1",
+                "description": "implement subtract",
+                "expected_result": "subtract implemented",
+                "validation_steps": (),
+                "observed_files": (),
+            },
+        ),
+    )
+    response = RoleBackendResponse(
+        structured_output={
+            "task_verifications": [
+                {
+                    "check_ref": "task-1",
+                    "criterion": "valid",
+                    "actual_observation": "looks complete",
+                }
+            ]
+        },
+        text="",
+        provider="test",
+        model="test",
+    )
+    verdicts = parse_verification(response, verifier_input)
+    assert verdicts[0].criterion is CriterionResult.NOT_VALID
+    assert "omitted or changed" in verdicts[0].actual_observation
+
+
+def test_verification_rejects_delete_target_that_still_exists() -> None:
+    from breakdown.shared.models import ObservedFile, VerificationTaskView
+
+    verifier_input = BuildVerificationInput(
+        run_id="run-1",
+        tasks=(
+            VerificationTaskView(
+                task_ref="task-delete",
+                description="delete old file",
+                expected_result="old file is absent",
+                validation_steps=(),
+                observed_files=(
+                    ObservedFile(
+                        path="old.py",
+                        disposition="delete",
+                        content="still here",
+                        status="read",
+                    ),
+                ),
+            ),
+        ),
+    )
+    response = RoleBackendResponse(
+        structured_output={
+            "task_verifications": [
+                {
+                    "check_ref": "task-delete",
+                    "criterion": "valid",
+                    "expected": "old file is absent",
+                    "actual_observation": "deleted",
+                }
+            ]
+        },
+        text="",
+        provider="test",
+        model="test",
+    )
+    verdicts = parse_verification(response, verifier_input)
+    assert verdicts[0].criterion is CriterionResult.NOT_VALID
+    assert "still present" in verdicts[0].actual_observation
+
+
 def test_verifier_happy_path_authorizes_sync(tmp_path: Path) -> None:
     """D35: builder + verifier all valid -> sync authorized, run succeeds."""
     e2e = _E2E(tmp_path)
