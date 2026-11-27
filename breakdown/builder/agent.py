@@ -125,6 +125,8 @@ class Builder:
 
             invalid_paths: list[str] = []
             for reported_path in result.reported_changed_paths:
+                if reported_path not in reported_paths:
+                    reported_paths.append(reported_path)
                 try:
                     normalized_path = validate_target_path(reported_path)
                 except ValueError:
@@ -132,8 +134,6 @@ class Builder:
                     continue
                 if normalized_path != reported_path or normalized_path not in approved_paths:
                     invalid_paths.append(reported_path)
-                if reported_path not in reported_paths:
-                    reported_paths.append(reported_path)
 
             if invalid_paths:
                 return TaskResult(
