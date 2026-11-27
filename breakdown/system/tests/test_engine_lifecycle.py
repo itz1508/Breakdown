@@ -515,3 +515,36 @@ def test_host_rejects_stale_source_checkpoint_before_sandbox_creation(tmp_path: 
     assert record.terminal_outcome == "failed"
     assert "source checkpoint is stale" in record.reason
     assert not e2e.safety.sandbox_root(run_id).exists()
+
+
+@pytest.mark.parametrize(
+    ("artifact_key", "reason_fragment"),
+    [
+        ("approved_source_checkpoint", "approved source checkpoint digest does not match"),
+        ("frozen_plan_hash", "frozen plan hash artifact digest does not match"),
+        ("approved_plan_revision", "approved plan revision artifact digest does not match"),
+    ],
+)
+def test_host_rejects_tampered_build_artifact_reference_digest_before_sandbox_creation(
+    tmp_path: Path, artifact_key: str, reason_fragment: str
+) -> None:
+    e2e = _E2E(tmp_path)
+    run_id = _advance_to_approved_build(e2e)
+    loaded = e2e.engine.stores.runs.load(run_id)
+    assert loaded is not None
+    revision, run_record = loaded
+    artifacts = dict(run_record.produced_artifacts)
+    ref = artifacts[artifact_key]
+    artifacts[artifact_key] = ref.model_copy(update={"digest": "0" * 64})
+    e2e.engine.stores.runs.update_run(
+        run_record.model_copy(update={"produced_artifacts": artifacts}),
+        expected_revision=revision,
+    )
+
+    record = e2e.engine.advance(run_id)
+
+    assert record.state is RunState.TERMINAL
+    assert record.terminal_outcome == "failed"
+    assert reason_fragment in record.reason
+    assert not e2e.safety.sandbox_root(run_id).exists()
+
