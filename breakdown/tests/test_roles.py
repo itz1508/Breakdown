@@ -641,6 +641,30 @@ async def test_builder_marks_completed_backend_without_change_receipt_uncertain(
     assert "did not report changes for approved target paths" in output.task_results[0].actual_observation
 
 
+async def test_builder_blocks_unsupported_target_dispositions(
+    fake_coding_backend: Any, tmp_path: Path
+) -> None:
+    build_input = _build_input()
+    original_task = build_input.implementation_plan.tasks[0]
+    unsupported_target = original_task.target_paths[0].model_copy(
+        update={"disposition": "delete"}
+    )
+    task = original_task.model_copy(
+        update={"target_paths": (unsupported_target, *original_task.target_paths[1:])}
+    )
+    plan = build_input.implementation_plan.model_copy(update={"tasks": (task,)})
+    build_input = build_input.model_copy(update={"implementation_plan": plan})
+
+    builder = Builder(backend=fake_coding_backend, sandbox_root=tmp_path / "sandbox")
+    output = await builder.execute_build(build_input, _context("build_execution"))
+
+    assert fake_coding_backend.requests == []
+    assert output.synchronization_prepared is False
+    assert output.task_results[0].criterion is CriterionResult.UNCERTAINTY
+    assert output.task_results[0].execution_result is ExecutionResult.BLOCKED
+    assert "does not support target dispositions" in output.task_results[0].actual_observation
+
+
 async def test_builder_failure_stops_and_is_not_valid(fake_coding_backend: Any, tmp_path: Path) -> None:
     fake_coding_backend.result = CodingBackendResult(
         execution_result=ExecutionResult.FAILED, observation="check failed", reported_changed_paths=()
