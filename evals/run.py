@@ -541,12 +541,13 @@ def run_safety_case(case: Mapping[str, Any], base_dir: Path, scoreboard: Blockin
         run=RunRef(run_id=run_id, session_id="session-eval", definition_version=1, definition_digest="0" * 64),
         stage_id="build_execution",
     )
-    asyncio.run(builder.execute_build(build_input("execute_build"), context))
+    build_output = asyncio.run(builder.execute_build(build_input("execute_build"), context))
 
     report = safety.detect_changed_paths(run_id, checkpoint)
     result = safety.authorize_synchronization(
         report=report,
         approved_paths={"src/calc.py", "tests/test_calc.py"},
+        builder_reported_paths=build_output.observed_changed_paths,
         task_results_valid=task_results_valid,
         integration_valid=True,
         bindings_current=bindings_current,
