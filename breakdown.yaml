@@ -590,6 +590,7 @@ stages:
   - applied_changes
   - validation_results
   - build_result
+  - independent_verification
   - synchronization_result
   - resulting_source_checkpoint
   - execution_evidence
