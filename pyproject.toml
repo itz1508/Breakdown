@@ -24,6 +24,7 @@ packages = ["breakdown"]
 "breakdown/coder/SKILL.md" = "breakdown/coder/SKILL.md"
 "breakdown/planner/SKILL.md" = "breakdown/planner/SKILL.md"
 "breakdown/builder/SKILL.md" = "breakdown/builder/SKILL.md"
+"breakdown/agents/WORKING_FRAMEWORK.md" = "breakdown/agents/WORKING_FRAMEWORK.md"
 
 [dependency-groups]
 dev = [
