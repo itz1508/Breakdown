@@ -311,6 +311,23 @@ class OpenAICompatibleCodingBackend:
 
     async def apply_task(self, request: CodingBackendRequest) -> CodingBackendResult:
         task = request.task
+        unsupported_dispositions = sorted(
+            {
+                target.disposition
+                for target in task.target_paths
+                if target.disposition in {"delete", "move"}
+            }
+        )
+        if unsupported_dispositions:
+            return CodingBackendResult(
+                execution_result=ExecutionResult.BLOCKED,
+                observation=(
+                    "coding backend does not support target dispositions: "
+                    f"{unsupported_dispositions}"
+                ),
+                reported_changed_paths=(),
+            )
+
         sandbox = Path(request.sandbox_root)
         sandbox_resolved = sandbox.resolve()
         approved = tuple(target.path for target in task.target_paths)
