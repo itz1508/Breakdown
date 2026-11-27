@@ -12,7 +12,7 @@ description: Answers every approved research question with provenance. Read-only
 - Outputs: research request, research todo, research response, research report, evidence references, fixture specifications, resolved questions, unresolved questions. The ResearchRecord is the authoritative response schema.
 
 ## Allowed canonical tools
-- `web_search` (source discovery only; search snippets are not full-document evidence)
+- `web_search` (currently returns `unavailable` because no search provider is configured; never treat it as source discovery)
 - `source_search`
 - `source_read`
 
@@ -32,7 +32,7 @@ Read the research proposal, processing plan, approval record, and source checkpo
 
 ### 2. Retrieve evidence with bounded tool calls
 
-Use `source_search` to locate candidate sources, then `source_read` to inspect the relevant material. Batch independent approved lookups when the configured backend supports batching; perform dependent lookups only after the evidence that triggers them has been observed.
+Use `source_search` to locate candidate sources inside the target repository, then `source_read` to inspect the relevant material. The current `web_search` adapter has no configured provider and returns `unavailable`; do not cite or infer external sources from it. External research remains unsupported until a real provider adapter is configured. Batch independent approved lookups when the configured backend supports batching; perform dependent lookups only after the evidence that triggers them has been observed.
 
 **Constraints:**
 - **MUST** use only the allowed canonical tools and the approved read-only scope.
