@@ -9,6 +9,10 @@ breakdown/
 ├── __init__.py
 ├── __main__.py
 ├── tests/                         # Cross-agent, architecture and workflow tests
+├── agents/                         # Shared source-grounded prompt assembly
+│   ├── __init__.py
+│   ├── prompt.py
+│   └── WORKING_FRAMEWORK.md
 ├── shared/
 │   ├── base.py
 │   ├── config.py
@@ -18,11 +22,8 @@ breakdown/
 ├── researcher/                    # agent.py, SKILL.md, tests/
 ├── auditor/                       # agent.py, SKILL.md, tests/
 ├── coder/                         # agent.py, SKILL.md, tests/
-├── planner/
-│   ├── agent.py
-│   ├── SKILL.md
-│   ├── tests/
-│   └── builder/                   # agent.py, SKILL.md, tests/
+├── planner/                       # agent.py, SKILL.md, tests/
+├── builder/                       # independent agent.py, SKILL.md, tests/
 └── system/
     ├── runtime/
     ├── storage/
@@ -32,11 +33,12 @@ breakdown/
     └── tests/
 ```
 
-The five agent packages are Researcher, Auditor, Coder, Planner, and Builder. Coder is an independent package. Builder is located at `breakdown/planner/builder/` and does not use `shared/model_loop.py`.
+The currently implemented agent packages are Researcher, Auditor, Coder, Planner, and Builder. Builder is a sibling package at `breakdown/builder/`; it uses the separate coding backend and does not use `shared/model_loop.py`. Discovery is part of the accepted six-agent target but is not yet implemented or registered on this branch. The executable workflow remains the current eight-stage `breakdown.yaml`; it has not yet been migrated to the Discovery-first target workflow.
 
 ## Authority boundaries
 
 - `breakdown/__main__.py` is the composition root and creates the agent registry.
+- `agents/` owns shared prompt assembly and the source-grounded working framework; each agent's colocated `SKILL.md` supplies its role-specific instructions.
 - `shared/` owns shared types, strict model bases, configuration schema, and shared model-loop utilities.
 - Each agent package owns its implementation, canonical `SKILL.md` instructions, and tests.
 - `system/runtime/` owns workflow orchestration, authorization, lifecycle and execution control.
