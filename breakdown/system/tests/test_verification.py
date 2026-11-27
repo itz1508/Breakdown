@@ -5,8 +5,6 @@ from typing import Any
 from breakdown.shared.models import (
     BuildExecutionOutput,
     BuildVerificationInput,
-    BuildVerificationOutput,
-    CheckResult,
     CriterionResult,
     ExecutionResult,
     ImplementationPlan,
@@ -37,7 +35,7 @@ class _ScriptedVerifierBackend:
                     {
                         "check_ref": "task-1",
                         "criterion": self.criterion.value,
-                        "expected": "expected",
+                        "expected": "subtract(3, 2) == 1",
                         "actual_observation": "verifier check result",
                     }
                 ]
@@ -96,8 +94,15 @@ def test_verifier_absence_blocks_synchronization(tmp_path: Path) -> None:
     e2e.engine.role_factory = factory_without_verifier
     record = _run_e2e(e2e)
     assert record.terminal_outcome == "failed"
-    assert "independent verification" in (record.reason or "")
+    assert "synchronization blocked" in (record.reason or "")
     assert "independent_verification" in record.produced_artifacts
+    verification_ref = record.produced_artifacts["independent_verification"]
+    verification = e2e.artifacts.get_model(
+        __import__("breakdown.shared.models", fromlist=["BuildVerificationOutput"]).BuildVerificationOutput,
+        verification_ref.artifact_key,
+        verification_ref.revision,
+    )
+    assert "not configured" in verification.task_verifications[0].actual_observation
     calc_text = (e2e.target / "src" / "calc.py").read_text(encoding="utf-8")
     assert "def subtract" not in calc_text
 
