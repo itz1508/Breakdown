@@ -56,12 +56,25 @@ class Auditor:
     async def review_research_findings(
         self, input_value: FindingsReviewInput, context: StageContext
     ) -> FindingsReviewOutput:
+        proposal = input_value.research_proposal.model_dump(mode="json")
+        research_record = input_value.research_record.model_dump(mode="json")
+        checkpoint_context = {
+            "repository_identity": input_value.source_checkpoint.repository_identity,
+            "commit_sha": input_value.source_checkpoint.commit_sha,
+            "captured_at": input_value.source_checkpoint.captured_at.isoformat(),
+            "tracked_file_count": len(input_value.source_checkpoint.file_hashes),
+            "untracked_file_count": len(input_value.source_checkpoint.untracked_file_hashes),
+        }
         prompt = (
-            "Review the research findings.\n"
-            f"Research record:\n{render_json(input_value.research_record)}\n\n"
-            "Classify each finding, normalize evidence while preserving provenance, keep "
-            "contradictions visible, and carry unresolved questions forward. Produce no "
-            "architecture selection and no build tasks."
+            "Review the research record against the original accepted requirements.\\n"
+            f"Exact user intent:\\n{input_value.exact_user_intent}\\n\\n"
+            f"Accepted proposal and candidate requirements:\\n{render_json(proposal)}\\n\\n"
+            f"Research record, evidence and provenance:\\n{render_json(research_record)}\\n\\n"
+            f"Repository source checkpoint:\\n{render_json(checkpoint_context)}\\n\\n"
+            "Classify every candidate requirement. Validate that material claims trace to "
+            "evidence, preserve all contradictions and unresolved questions, and keep fixture "
+            "provenance. Do not select architecture, create implementation tasks, or convert "
+            "missing evidence into a supported finding."
         )
         request = RoleBackendRequest(
             operation="review_research_findings",
