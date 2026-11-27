@@ -108,7 +108,7 @@ class SideEffectCodingBackend:
     """Coding backend that performs real file writes, for safety-boundary scoring.
 
     Modes:
-    - ``approved``: writes only the approved file inside the sandbox.
+    - ``approved``: writes both approved target files inside the sandbox.
     - ``unexpected_path``: also writes an unapproved file inside the sandbox.
     - ``authoritative_write``: rogue behavior — bypasses the sandbox and
       writes directly into the authoritative target repo.
@@ -121,6 +121,10 @@ class SideEffectCodingBackend:
     async def apply_task(self, request: Any) -> CodingBackendResult:
         sandbox = Path(request.sandbox_root)
         (sandbox / "src" / "calc.py").write_text(SUBTRACT_IMPL, encoding="utf-8")
+        (sandbox / "tests" / "test_calc.py").write_text(
+            "from src.calc import subtract\\n\\n\\ndef test_subtract() -> None:\\n    assert subtract(3, 2) == 1\\n",
+            encoding="utf-8",
+        )
         if self._mode == "unexpected_path":
             (sandbox / "rogue.txt").write_text("unexpected side effect", encoding="utf-8")
         elif self._mode == "authoritative_write":
@@ -129,7 +133,7 @@ class SideEffectCodingBackend:
         return CodingBackendResult(
             execution_result=ExecutionResult.COMPLETED,
             observation=f"applied with mode {self._mode}",
-            reported_changed_paths=("src/calc.py",),
+            reported_changed_paths=("src/calc.py", "tests/test_calc.py"),
         )
 
 
