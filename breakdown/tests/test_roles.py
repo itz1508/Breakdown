@@ -13,7 +13,7 @@ from breakdown.auditor.agent import Auditor
 from breakdown.coder.agent import Coder
 from breakdown.planner.agent import Planner
 from breakdown.builder.agent import Builder
-from breakdown.researcher.agent import Researcher
+from breakdown.researcher.agent import Researcher, _build_baseline_map
 from breakdown.shared.base import RoleOperationError
 from breakdown.shared.models import (
     ArtifactRef,
@@ -344,6 +344,7 @@ async def test_researcher_builds_baseline_map_and_normalizes_evidence(
     assert len(record.baseline_map.entries) >= 1
     assert record.baseline_map.entries[0].path == "src/calc.py"
     assert record.baseline_map.entries[0].category == "source"
+    assert record.baseline_map.entries[0].exports_status == "complete"
 
     assert len(record.normalized_evidence) >= 1
     norm = record.normalized_evidence[0]
@@ -351,6 +352,20 @@ async def test_researcher_builds_baseline_map_and_normalizes_evidence(
     assert norm.source_identity == "test-repo"
     assert norm.source_location == "tests/test_calc.py"
     assert norm.provenance_preserved is True
+
+
+
+def test_researcher_baseline_map_marks_invalid_python_source(target_repo: Path) -> None:
+    broken_path = target_repo / "src" / "broken.py"
+    broken_path.write_text("def unfinished(", encoding="utf-8")
+    checkpoint = _checkpoint().model_copy(update={"file_hashes": {"src/broken.py": "b" * 64}})
+
+    baseline_map = _build_baseline_map(checkpoint, target_repo)
+
+    entry = baseline_map.entries[0]
+    assert entry.path == "src/broken.py"
+    assert entry.exports == ()
+    assert entry.exports_status == "syntax_invalid"
 
 
 async def test_researcher_rejects_missing_provenance(fake_role_backend: Any, target_repo: Path) -> None:
