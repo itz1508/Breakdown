@@ -1009,6 +1009,7 @@ class ObservedFile(StrictModel):
     """One file observed by the verifier for a given task."""
 
     path: str = Field(min_length=1)
+    disposition: Literal["create", "modify", "delete", "move"]
     content: str
     status: Literal["read", "missing", "unavailable"]
     truncated: bool = False
