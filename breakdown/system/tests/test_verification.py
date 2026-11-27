@@ -5,6 +5,7 @@ from typing import Any
 from breakdown.shared.models import (
     BuildExecutionOutput,
     BuildVerificationInput,
+    BuildVerificationOutput,
     CriterionResult,
     ExecutionResult,
     ImplementationPlan,
@@ -98,7 +99,7 @@ def test_verifier_absence_blocks_synchronization(tmp_path: Path) -> None:
     assert "independent_verification" in record.produced_artifacts
     verification_ref = record.produced_artifacts["independent_verification"]
     verification = e2e.artifacts.get_model(
-        __import__("breakdown.shared.models", fromlist=["BuildVerificationOutput"]).BuildVerificationOutput,
+        BuildVerificationOutput,
         verification_ref.artifact_key,
         verification_ref.revision,
     )
@@ -194,6 +195,39 @@ def test_verification_marks_missing_files_and_rejects_valid_verdict(tmp_path: Pa
     )
     verdicts = parse_verification(response, verifier_input)
     assert verdicts[0].criterion is CriterionResult.NOT_VALID
+
+
+def test_verification_rejects_mismatched_expected_result() -> None:
+    verifier_input = BuildVerificationInput(
+        run_id="run-1",
+        tasks=(
+            {
+                "task_ref": "task-1",
+                "description": "implement subtract",
+                "expected_result": "subtract(3, 2) == 1",
+                "validation_steps": (),
+                "observed_files": (),
+            },
+        ),
+    )
+    response = RoleBackendResponse(
+        structured_output={
+            "task_verifications": [
+                {
+                    "check_ref": "task-1",
+                    "criterion": "valid",
+                    "expected": "subtract(3, 2) == 2",
+                    "actual_observation": "completed",
+                }
+            ]
+        },
+        text="",
+        provider="test",
+        model="test",
+    )
+    verdicts = parse_verification(response, verifier_input)
+    assert verdicts[0].criterion is CriterionResult.NOT_VALID
+    assert "different expected result" in verdicts[0].actual_observation
 
 
 def test_verification_rejects_wrong_and_missing_task_refs() -> None:
