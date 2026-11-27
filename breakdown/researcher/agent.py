@@ -2,9 +2,9 @@
 
 Stage: research_execution. The Researcher investigates only approved
 questions, records provenance for material claims, preserves
-contradictions, and keeps missing information unresolved. Delegation is
-bounded (max 3 parallel workers, 3 rounds, read-only, evidence input
-only). Synthetic samples never become evidence.
+contradictions, and keeps missing information unresolved. It does not
+create subagents; it uses only the Host-supplied read-only tool set.
+Synthetic samples never become evidence.
 """
 
 from __future__ import annotations
@@ -31,8 +31,6 @@ from breakdown.shared.models import (
 from breakdown.system.tools.toolkit import RoleToolkit
 
 _RESEARCHER_BRIEF = load_skill_prompt(__file__)
-
-MAX_PARALLEL_WORKERS = 3
 
 
 def _build_baseline_map(
