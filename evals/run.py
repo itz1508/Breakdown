@@ -26,8 +26,8 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 from scorers import BlockingScoreboard
-from breakdown.checkpoint import capture_source_checkpoint, checkpoint_is_fresh
-from breakdown.models import (
+from breakdown.system.storage.checkpoint import capture_source_checkpoint, checkpoint_is_fresh
+from breakdown.shared.models import (
     BuildExecutionInput,
     ClassifiedFinding,
     CodeAnalysisRequest,
@@ -51,12 +51,13 @@ from breakdown.models import (
     StageContext,
     TokenUsage,
 )
-from breakdown.roles import RoleOperationError, RoleToolkit
-from breakdown.roles.auditor import Auditor
-from breakdown.roles.builder import Builder
-from breakdown.roles.coder import Coder
-from breakdown.roles.planner import Planner
-from breakdown.roles.researcher import Researcher
+from breakdown.shared.base import RoleOperationError
+from breakdown.system.tools.toolkit import RoleToolkit
+from breakdown.auditor.agent import Auditor
+from breakdown.builder.agent import Builder
+from breakdown.coder.agent import Coder
+from breakdown.planner.agent import Planner
+from breakdown.researcher.agent import Researcher
 from breakdown.system.safety import SafetyBoundary
 
 ROOT = Path(__file__).resolve().parent
@@ -589,13 +590,13 @@ def load_cases() -> list[dict[str, Any]]:
 
 def _build_live_eval_backends(fixture: Path) -> dict[str, Any]:
     """Live backends from environment settings (Databricks/custom/OpenAI)."""
-    from breakdown.live_backend import (
+    from breakdown.system.runtime.live_backend import (
         OpenAICompatibleCodingBackend,
         OpenAICompatibleRoleBackend,
         build_openai_client,
         resolve_model,
     )
-    from breakdown.models import Settings
+    from breakdown.shared.models import Settings
 
     settings = Settings()
     client = build_openai_client(settings)
@@ -626,7 +627,7 @@ def main(argv: list[str] | None = None) -> int:
         fixture = build_fixture_repo(base / "role-fixture")
         live_backends: Mapping[str, Any] | None = None
         if args.live:
-            from breakdown.live_backend import LiveBackendError
+            from breakdown.system.runtime.live_backend import LiveBackendError
 
             try:
                 live_backends = _build_live_eval_backends(fixture)
