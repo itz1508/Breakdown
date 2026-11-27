@@ -54,6 +54,25 @@ def resolve_inside_root(root: Path, relative: str) -> Path:
         raise ToolNotAuthorized(str(exc)) from exc
 
 
+def _resolve_tool_scopes(root: Path, scope_paths: tuple[str, ...]) -> tuple[Path, ...]:
+    """Resolve Host-supplied scopes; symlinks and traversal must remain inside root."""
+    root_resolved = root.resolve()
+    resolved_scopes: list[Path] = []
+    for scope_path in scope_paths:
+        resolved = resolve_inside_root(root_resolved, scope_path)
+        if not resolved.exists():
+            raise ToolNotAuthorized(f"scope path does not exist: {scope_path!r}")
+        resolved_scopes.append(resolved)
+    return tuple(resolved_scopes)
+
+
+def _path_is_in_tool_scope(candidate: Path, scopes: tuple[Path, ...]) -> bool:
+    return any(
+        candidate == scope or (scope.is_dir() and candidate.is_relative_to(scope))
+        for scope in scopes
+    )
+
+
 def _iter_text_files(root: Path) -> Sequence[Path]:
     files: list[Path] = []
     for path in sorted(root.rglob("*")):
@@ -107,6 +126,7 @@ def capability_inspect(payload: CapabilityInspectRequest) -> CapabilityInspectRe
 class SourceSearchRequest(StrictModel):
     pattern: str = Field(min_length=1)
     max_results: int = Field(default=MAX_RESULTS_DEFAULT, ge=1, le=500)
+    scope_paths: tuple[str, ...] = ()
 
 
 class SourceSearchMatch(StrictModel):
@@ -121,18 +141,26 @@ class SourceSearchReport(StrictModel):
 
 
 def source_search(payload: SourceSearchRequest, *, root: Path) -> SourceSearchReport:
-    """Regex search over text files strictly inside ``root``."""
+    """Regex search over repository text files, optionally Host-scope constrained."""
     try:
         expression = re.compile(payload.pattern)
     except re.error as exc:
         raise ToolInputNotValid(f"invalid search pattern: {exc}") from exc
+
+    root_resolved = root.resolve()
+    scopes = _resolve_tool_scopes(root_resolved, payload.scope_paths) if payload.scope_paths else ()
     matches: list[SourceSearchMatch] = []
-    for file_path in _iter_text_files(root):
+    for file_path in _iter_text_files(root_resolved):
+        resolved_file = file_path.resolve()
+        if not resolved_file.is_relative_to(root_resolved):
+            continue
+        if scopes and not _path_is_in_tool_scope(resolved_file, scopes):
+            continue
         try:
-            text = file_path.read_text(encoding="utf-8")
+            text = resolved_file.read_text(encoding="utf-8")
         except (UnicodeDecodeError, OSError):
             continue
-        relative = file_path.relative_to(root).as_posix()
+        relative = file_path.relative_to(root_resolved).as_posix()
         for number, line in enumerate(text.splitlines(), start=1):
             if expression.search(line):
                 matches.append(SourceSearchMatch(path=relative, line=number, text=line.strip()[:300]))
@@ -156,9 +184,20 @@ class SourceReadResult(StrictModel):
     truncated: bool = False
 
 
-def source_read(payload: SourceReadRequest, *, root: Path) -> SourceReadResult:
-    """Read one UTF-8 text file strictly inside ``root``."""
+def source_read(
+    payload: SourceReadRequest,
+    *,
+    root: Path,
+    scope_paths: tuple[str, ...] = (),
+) -> SourceReadResult:
+    """Read one UTF-8 text file inside root and any Host-supplied scope."""
     resolved = resolve_inside_root(root, payload.path)
+    if scope_paths:
+        scopes = _resolve_tool_scopes(root, scope_paths)
+        if not _path_is_in_tool_scope(resolved, scopes):
+            raise ToolNotAuthorized(
+                f"read path {payload.path!r} is outside the Host-supplied tool scope"
+            )
     if not resolved.is_file():
         raise ToolNotAuthorized(f"path does not identify a file: {payload.path}")
     if is_denied_read_name(resolved.name):
@@ -381,19 +420,32 @@ def tool_definitions() -> list[dict[str, Any]]:
     ]
 
 
-def dispatch_tool(name: str, payload: Mapping[str, Any], *, root: Path, memory_root: Path | None = None) -> Any:
-    """Validate the payload, then run the canonical tool."""
+def dispatch_tool(
+    name: str,
+    payload: Mapping[str, Any],
+    *,
+    root: Path,
+    memory_root: Path | None = None,
+    scope_paths: tuple[str, ...] = (),
+) -> Any:
+    """Validate and dispatch a canonical tool under Host-supplied path scope."""
     tool = TOOLS.get(name)
     if tool is None:
         raise ToolNotAuthorized(f"unknown tool: {name}")
+    payload_value = dict(payload)
+    if name == "source_search" and scope_paths:
+        # Never let model-provided arguments widen the Host-issued scope.
+        payload_value["scope_paths"] = scope_paths
     try:
-        request = tool.input_model.model_validate(dict(payload))
+        request = tool.input_model.model_validate(payload_value)
     except ValidationError as exc:
         raise ToolInputNotValid(f"{name}: {exc}") from exc
     if tool.needs_memory_root:
         if memory_root is None:
             raise ToolNotAuthorized("memory store not configured")
         return tool.function(request, memory_root=memory_root)
+    if name == "source_read":
+        return tool.function(request, root=root, scope_paths=scope_paths)
     if tool.needs_root:
         return tool.function(request, root=root)
     return tool.function(request)
