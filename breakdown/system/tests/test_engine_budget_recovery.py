@@ -94,7 +94,7 @@ class ScriptedVerifierBackend:
                     {
                         "check_ref": "task-1",
                         "criterion": "valid",
-                        "expected": "subtract(3, 2) == 1 and the test passes",
+                        "expected": "subtract(3, 2) == 1",
                         "actual_observation": "test fixture observed the expected subtraction implementation",
                     }
                 ]
