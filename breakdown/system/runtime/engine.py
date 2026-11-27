@@ -32,6 +32,7 @@ from breakdown.shared.models import (
     ArtifactRef,
     BuildExecutionInput,
     BuildExecutionOutput,
+    BuildVerificationOutput,
     CancellationRecord,
     CheckResult,
     ClassifiedFinding,
@@ -79,6 +80,7 @@ from breakdown.system.runtime.planning_ops import freeze_plan, run_preflight
 from breakdown.system.runtime.verification import (
     build_verification_input,
     parse_verification,
+    verification_failure_reason,
     verification_request,
 )
 from breakdown.system.safety import SafetyBoundary
@@ -479,9 +481,56 @@ class WorkflowEngine:
                 return
         if stage_id == "implementation_planning" and failure_reason is None:
             failure_reason = self._freeze_and_preflight(run_id, stage_id, produced)
+        verification_usage: TokenUsage | None = None
         if stage_id == "build_execution" and failure_reason is None:
             assert approved_checkpoint is not None
-            failure_reason = self._post_build(run_id, produced, approved_checkpoint)
+            build_output = result.produces.get("build_result")
+            plan_ref = produced.get("implementation_plan")
+            if not isinstance(build_output, BuildExecutionOutput) or plan_ref is None:
+                failure_reason = "build execution did not produce verifiable plan and result artifacts"
+            else:
+                plan = self.stores.artifacts.get_model(
+                    ImplementationPlan, plan_ref.artifact_key, plan_ref.revision
+                )
+                verifier_output, verification_usage = self._run_independent_verification(
+                    run_id=run_id,
+                    plan=plan,
+                    build_output=build_output,
+                    sandbox=sandbox,
+                    verifier=roles.get("verifier"),
+                )
+                verification_ref = self._store(
+                    "independent_verification", verifier_output, "build_execution"
+                )
+                produced["independent_verification"] = verification_ref
+                self.stores.events.emit(
+                    EventType.ARTIFACT_PRODUCED,
+                    run_id=run_id,
+                    stage_id=stage_id,
+                    payload={
+                        "artifact_key": "independent_verification",
+                        "revision": verification_ref.revision,
+                    },
+                )
+                if verification_usage is not None:
+                    tokens_used += verification_usage.input_tokens + verification_usage.output_tokens
+                    tool_calls_used += verification_usage.tool_calls
+                    stage_usage = self._add_stage_usage(stage_usage, stage_id, verification_usage)
+                    usage_totals = (tokens_used, tool_calls_used)
+                    self._maybe_emit_cost_threshold(run_id, stage_id, tokens_before, tokens_used)
+                stage_cap = int(
+                    (self.definition.cost_budget.get("per_stage") or {}).get("default_max_tokens") or 0
+                )
+                stage_tokens = stage_usage.get(stage_id)
+                if stage_cap and stage_tokens is not None and stage_tokens.tokens_used > stage_cap:
+                    failure_reason = (
+                        f"stage {stage_id} consumed {stage_tokens.tokens_used} tokens; "
+                        f"per-stage cap {stage_cap}"
+                    )
+                else:
+                    failure_reason = self._budget_violation(tokens_used, tool_calls_used)
+                    if failure_reason is None:
+                        failure_reason = self._post_build(run_id, produced, approved_checkpoint)
         if failure_reason is not None:
             self._handle_stage_failure(
                 run_id,
@@ -643,6 +692,48 @@ class WorkflowEngine:
             return False
         return self.stores.artifacts.get_digest(ref.artifact_key, ref.revision) == ref.digest
 
+    def _run_independent_verification(
+        self,
+        *,
+        run_id: str,
+        plan: ImplementationPlan,
+        build_output: BuildExecutionOutput,
+        sandbox: Path | None,
+        verifier: Any | None,
+    ) -> tuple[BuildVerificationOutput, TokenUsage | None]:
+        """Run an independent verifier; absence or exceptions never use Builder self-report."""
+        if sandbox is None or not isinstance(verifier, RoleBackend):
+            verdicts = tuple(
+                CheckResult(
+                    check_ref=task.task_id,
+                    criterion=CriterionResult.NOT_VALID,
+                    expected=task.expected_result,
+                    actual_observation="independent verifier is not configured or sandbox is unavailable",
+                )
+                for task in plan.tasks
+            )
+            return BuildVerificationOutput(task_verifications=verdicts), None
+
+        verification_input = build_verification_input(run_id, plan, build_output, sandbox)
+        request = verification_request(verification_input)
+        try:
+            response = asyncio.run(verifier.generate(request))
+        except Exception as exc:
+            verdicts = tuple(
+                CheckResult(
+                    check_ref=task.task_ref,
+                    criterion=CriterionResult.NOT_VALID,
+                    expected=task.expected_result,
+                    actual_observation=(
+                        "independent verifier invocation raised " + type(exc).__name__
+                    ),
+                )
+                for task in verification_input.tasks
+            )
+            return BuildVerificationOutput(task_verifications=verdicts), None
+
+        verdicts = parse_verification(response, verification_input)
+        return BuildVerificationOutput(task_verifications=verdicts), response.usage
     def _post_build(
         self,
         run_id: str,
@@ -660,28 +751,15 @@ class WorkflowEngine:
         plan = self.stores.artifacts.get_model(ImplementationPlan, plan_ref.artifact_key, plan_ref.revision)
         approved_paths = {target.path for task in plan.tasks for target in task.target_paths}
         task_results_valid = all(result.criterion is CriterionResult.VALID for result in build_output.task_results)
-        # D35: independent verification - if a verifier backend is configured, grade each
-        # build task against the plan's validation steps by reading the actual sandbox files.
-        # The builder's self-report (validation_results) is kept as evidence but no longer
-        # gates authorization; independent_verification is stored as an artifact.
-        verifier = self.role_factory(None).get("verifier")
-        if isinstance(verifier, RoleBackend):
-            # Assemble verification input from the plan, build output, and sandbox
-            vb_input = build_verification_input(run_id, plan, build_output, sandbox or self.stores.safety.target_root)
-            vb_request = verification_request(vb_input)
-            # Run the verifier backend in a fresh context
-            try:
-                vb_response = asyncio.run(verifier.generate(vb_request))
-            except Exception:
-                integration_valid = False
-            else:
-                verdicts = parse_verification(vb_response, vb_input)
-                integration_valid = all(v.criterion is CriterionResult.VALID for v in verdicts)
-        else:
-            # Legacy self-report path (backward compatible)
-            integration_valid = all(
-                result.criterion is CriterionResult.VALID for result in build_output.validation_results
-            )
+        verification_ref = produced.get("independent_verification")
+        if verification_ref is None:
+            return "independent verification artifact is missing"
+        verification_output = self.stores.artifacts.get_model(
+            BuildVerificationOutput,
+            verification_ref.artifact_key,
+            verification_ref.revision,
+        )
+        integration_valid = verification_failure_reason(verification_output.task_verifications) is None
         record = self._reload(run_id)
         sync_result = self.stores.safety.authorize_synchronization(
             report=report,
