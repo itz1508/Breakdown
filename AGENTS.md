@@ -12,9 +12,11 @@ This file is human-owned. Agents must not edit it unless the user explicitly aut
 ## Package boundaries
 
 - `breakdown/__main__.py` is the only application composition root and owns construction of the agent registry.
-- The independent agent packages are `researcher/`, `auditor/`, `coder/`, and `planner/`; Builder is `planner/builder/`.
+- The currently implemented independent agent packages are `researcher/`, `auditor/`, `coder/`, `planner/`, and `builder/`. Builder is a sibling of Planner and must not be nested under it.
+- The accepted target contains a sixth independent `discovery/` package; it is not yet implemented or registered in the current executable workflow.
 - Each agent owns its `agent.py`, canonical `SKILL.md`, and local tests.
 - Builder does not use the shared model loop.
+- `agents/` owns shared prompt assembly and the source-grounded framework; role-specific `SKILL.md` files remain colocated with their agent packages.
 - Shared contracts and configuration schema belong under `shared/`.
 - Runtime, storage, tools, memory, and safety belong under `system/`.
 - Do not add a second workflow controller, persistence owner, registry, configuration source, or entry point.
