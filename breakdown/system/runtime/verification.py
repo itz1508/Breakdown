@@ -195,7 +195,12 @@ def parse_verification(
 
         criterion = verdict.criterion
         observation = verdict.actual_observation.strip()
-        if criterion is CriterionResult.VALID and not observation:
+        if verdict.expected and verdict.expected != task.expected_result:
+            criterion = CriterionResult.NOT_VALID
+            observation = (
+                "verifier evaluated a different expected result than the approved plan"
+            )
+        elif criterion is CriterionResult.VALID and not observation:
             criterion = CriterionResult.NOT_VALID
             observation = "verifier returned valid without an actual observation"
 
