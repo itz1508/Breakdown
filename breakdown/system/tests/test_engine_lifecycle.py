@@ -132,13 +132,14 @@ PLAN_OUTPUT: dict[str, Any] = {
                 "source_evidence": ["f-1"],
                 "capability_reuse": [],
                 "reference_ids": [],
-                "expected_result": "subtract(3, 2) == 1",
+                "expected_result": "src/calc.py defines subtract(a, b) and returns a - b",
                 "validation_steps": [
                     {
                         "step_id": "v-1",
-                        "description": "run tests",
-                        "command_or_observation": "pytest -q",
-                        "expected": "pass",
+                        "description": "inspect the resulting source",
+                        "command_or_observation": "read src/calc.py and verify subtract is defined and returns a - b",
+                        "expected": "subtract is defined and returns a - b",
+                        "kind": "observation",
                     }
                 ],
                 "required_evidence": ["test output"],
@@ -192,8 +193,8 @@ class _ScriptedVerifierBackend:
                     {
                         "check_ref": "task-1",
                         "criterion": "valid",
-                        "expected": "subtract(3, 2) == 1",
-                        "actual_observation": "test fixture observed the expected subtraction implementation",
+                        "expected": "src/calc.py defines subtract(a, b) and returns a - b",
+                        "actual_observation": "test fixture inspected the sandbox source and observed subtract returning a - b",
                     }
                 ]
             },
