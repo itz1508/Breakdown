@@ -569,6 +569,18 @@ def test_offline_demo_verifier_does_not_claim_unexecuted_commands() -> None:
     assert "cannot execute command steps" in verdicts[0].actual_observation
 
 
+def test_verifier_runs_when_sync_runtime_is_called_inside_event_loop(tmp_path: Path) -> None:
+    import asyncio
+
+    async def exercise() -> Any:
+        e2e = _E2E(tmp_path)
+        return _run_e2e(e2e)
+
+    record = asyncio.run(exercise())
+    assert record.terminal_outcome == "success"
+    assert "independent_verification" in record.produced_artifacts
+
+
 def test_verifier_happy_path_authorizes_sync(tmp_path: Path) -> None:
     """D35: builder + verifier all valid -> sync authorized, run succeeds."""
     e2e = _E2E(tmp_path)
