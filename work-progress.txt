@@ -34,7 +34,7 @@ Status: Partially Ready
 - Migrate the current eight-stage workflow and Runtime ownership to the accepted Host-controlled workflow without creating parallel authorities.
 - Implement the Host-owned invocation authorization grant at dispatch; current role allowlists and synchronization checks are not a run/package-bound InvocationGrant.
 - Complete the provider-independent agent tool support package under breakdown/agents/tools while preserving the current canonical Host tool authority and avoiding a second registry.
-- Integrate the independent Host-invoked verification capability required by the accepted target.
+- Host already invokes a separately configured verifier backend after Builder and persists `independent_verification`; `verification.py` builds bounded observations, constructs the verifier request, and strictly parses per-task verdicts. The target `breakdown/skills/verify_all.py` wrapper is still absent; add or relocate that interface only if required, without creating a sixth autonomous agent or duplicate authority.
 - Run the repository's documented pytest, Ruff, format, mypy and offline evaluation commands in a local environment with the branch checked out; correct any failures and repeat.
 
 ## Explicit non-adoptions
@@ -58,5 +58,5 @@ Status: Partially Ready
 - Re-fetched the changed engine and test files from the work branch and confirmed the new digest checks and regression cases are present.
 - Confirmed the removed nested Builder test package path now returns 404 on the work branch.
 - Local pytest, Ruff, formatting, mypy and offline evaluation remain unexecuted. GitHub status/workflow checks are not a substitute for local execution.
-- Structural target gaps remain unchanged: no sibling `breakdown/discovery/` agent or Discovery contracts/registration; the executable workflow still starts at `research_proposal` and retains the separate Research approval stage; Runtime is still under `system/runtime` rather than the target Host package; provider-neutral tools are still under `system/tools`, with no `agents/tools` adapter package; there is no run/package-bound Host InvocationGrant. The accepted workflow and package migration therefore remain incomplete.
+- Structural target gaps remain unchanged: no sibling `breakdown/discovery/` agent or Discovery contracts/registration; the executable workflow still starts at `research_proposal` and retains the separate Research approval stage; Runtime is still under `system/runtime` rather than the target Host package; provider-neutral tools are still under `system/tools`, with no `agents/tools` adapter package; there is no run/package-bound Host InvocationGrant. Host-invoked independent verification is already implemented in `system/runtime/engine.py` and `system/runtime/verification.py`, but the target `breakdown/skills/verify_all.py` wrapper path is absent. The accepted workflow and package migration therefore remain incomplete.
 
