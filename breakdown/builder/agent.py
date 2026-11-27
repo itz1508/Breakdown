@@ -12,6 +12,8 @@ boundary).
 from __future__ import annotations
 
 from pathlib import Path
+
+from breakdown.agents.prompt import load_agent_prompt
 from breakdown.shared.base import RoleOperationError
 from breakdown.shared.models import CodingBackend
 from breakdown.shared.models import (
@@ -36,6 +38,7 @@ class Builder:
     def __init__(self, *, backend: CodingBackend, sandbox_root: Path) -> None:
         self._backend = backend
         self._sandbox_root = Path(sandbox_root)
+        self._agent_instructions = load_agent_prompt(__file__)
         # Accumulated coding-backend usage; runtime budget enforcement reads it.
         self.last_usage: TokenUsage | None = None
 
@@ -91,6 +94,7 @@ class Builder:
                     task=task,
                     sandbox_root=str(self._sandbox_root),
                     prior_error=prior_error,
+                    agent_instructions=self._agent_instructions,
                 )
             )
             self._accumulate_usage(result)
