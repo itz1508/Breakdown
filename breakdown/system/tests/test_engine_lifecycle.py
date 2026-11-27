@@ -213,12 +213,12 @@ class _E2E:
         self.safety = SafetyBoundary(target_root=self.target, state_root=state)
         self.memory = MemoryStore(state)
         self.definition = _definition()
-        from breakdown.system.runtime.contracts import build_contract_registry
-        from breakdown.system.tools.toolkit import RoleToolkit
         from breakdown.auditor.agent import Auditor
         from breakdown.builder.agent import Builder
         from breakdown.planner.agent import Planner
         from breakdown.researcher.agent import Researcher
+        from breakdown.system.runtime.contracts import build_contract_registry
+        from breakdown.system.tools.toolkit import RoleToolkit
 
         self.contracts = build_contract_registry(self.definition)
         self.approvals = ApprovalManager(
