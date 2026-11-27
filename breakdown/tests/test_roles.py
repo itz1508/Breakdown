@@ -14,7 +14,7 @@ from breakdown.auditor.agent import Auditor
 from breakdown.builder.agent import Builder
 from breakdown.coder.agent import Coder
 from breakdown.planner.agent import Planner
-from breakdown.researcher.agent import Researcher, _build_baseline_map
+from breakdown.researcher.agent import Researcher, _build_baseline_map, _validate_coverage
 from breakdown.shared.base import RoleOperationError
 from breakdown.shared.models import (
     ArtifactRef,
@@ -351,6 +351,26 @@ async def test_auditor_rejects_dropped_contradiction(fake_role_backend: Any, tar
     )
     with pytest.raises(RoleOperationError):
         await auditor.review_research_findings(payload, _context("findings_review"))
+
+
+def test_researcher_accepts_empty_approved_research_scope(target_repo: Path) -> None:
+    proposal = _proposal_output().model_copy(update={"research_questions": ()})
+    input_value = ResearchExecutionInput(
+        research_proposal=proposal,
+        processing_plan=_processing_plan("research_response"),
+        research_approval_ref=ArtifactRef(
+            artifact_key="research_approval_record",
+            digest="2" * 64,
+        ),
+        source_checkpoint=_checkpoint(),
+    )
+    output = ResearchExecutionOutput(
+        research_record=ResearchRecord(record_id="no-approved-research"),
+        report_summary="No research questions were approved.",
+        research_todo=ResearchTodo(items=()),
+    )
+
+    _validate_coverage(output, input_value)
 
 
 async def test_researcher_addresses_every_question(fake_role_backend: Any, target_repo: Path) -> None:
