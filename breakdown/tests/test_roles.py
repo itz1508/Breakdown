@@ -583,6 +583,39 @@ async def test_planner_rejects_requirement_not_backed_by_reviewed_finding(
         await planner.create_implementation_plan(payload, _context("implementation_planning"))
 
 
+async def test_planner_gap_scan_rejects_unsupported_delete_disposition(
+    fake_role_backend: Any, target_repo: Path
+) -> None:
+    invalid_plan = {
+        **PLAN_PAYLOAD,
+        "implementation_plan": {
+            **PLAN_PAYLOAD["implementation_plan"],
+            "tasks": [
+                {
+                    **PLAN_PAYLOAD["implementation_plan"]["tasks"][0],
+                    "target_paths": [
+                        {"path": "src/calc.py", "disposition": "delete"},
+                        {"path": "tests/test_calc.py", "disposition": "modify"},
+                    ],
+                }
+            ],
+        },
+    }
+    fake_role_backend.set_output("create_implementation_plan", invalid_plan)
+    planner = Planner(backend=fake_role_backend, tools=RoleToolkit(role="planner", root=target_repo))
+    payload = ImplementationPlanningInput(
+        processing_plan=_processing_plan("implementation_plan"),
+        classified_findings=tuple(
+            ClassifiedFinding.model_validate(row)
+            for row in FINDINGS_PAYLOAD["classified_findings"]
+        ),
+        exact_user_intent="x",
+        source_checkpoint=_checkpoint(),
+    )
+    with pytest.raises(RoleOperationError, match="unsupported coding-backend dispositions"):
+        await planner.create_implementation_plan(payload, _context("implementation_planning"))
+
+
 async def test_builder_reports_only_backend_observed_changed_paths(tmp_path: Path) -> None:
     backend = FakeCodingBackend(
         CodingBackendResult(
