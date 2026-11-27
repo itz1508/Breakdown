@@ -462,3 +462,56 @@ def test_advance_unknown_run(e2e: _E2E) -> None:
 
     with pytest.raises(EngineError):
         e2e.engine.advance("run-ghost")
+
+
+def _advance_to_approved_build(e2e: _E2E) -> str:
+    record = e2e.engine.start_run(
+        "Add subtract to src/calc.py with a test.",
+        user_identity="user@example.com",
+    )
+    record = e2e.engine.advance(record.run_id)
+    assert record.current_stage == "research_approval"
+    record = e2e.engine.record_decision(
+        record.run_id, "approve", user_identity="user@example.com"
+    )
+    record = e2e.engine.advance(record.run_id)
+    assert record.current_stage == "plan_approval"
+    record = e2e.engine.record_decision(
+        record.run_id, "approve", user_identity="user@example.com"
+    )
+    assert record.current_stage == "build_execution"
+    return record.run_id
+
+
+def test_host_rejects_tampered_approval_hash_before_sandbox_creation(tmp_path: Path) -> None:
+    e2e = _E2E(tmp_path)
+    run_id = _advance_to_approved_build(e2e)
+    original_assemble = e2e.engine._assemble_input
+
+    def tampered_assemble(stage_id: str, run_record: Any) -> Any:
+        result = original_assemble(stage_id, run_record)
+        if stage_id == "build_execution":
+            return result.model_copy(update={"approval_hash": "0" * 64})
+        return result
+
+    e2e.engine._assemble_input = tampered_assemble
+    record = e2e.engine.advance(run_id)
+
+    assert record.state is RunState.TERMINAL
+    assert record.terminal_outcome == "failed"
+    assert "approval hash does not match" in record.reason
+    assert not e2e.safety.sandbox_root(run_id).exists()
+
+
+def test_host_rejects_stale_source_checkpoint_before_sandbox_creation(tmp_path: Path) -> None:
+    e2e = _E2E(tmp_path)
+    run_id = _advance_to_approved_build(e2e)
+    source_file = e2e.target / "src" / "calc.py"
+    source_file.write_text("def changed_after_approval(): pass\\n", encoding="utf-8")
+
+    record = e2e.engine.advance(run_id)
+
+    assert record.state is RunState.TERMINAL
+    assert record.terminal_outcome == "failed"
+    assert "source checkpoint is stale" in record.reason
+    assert not e2e.safety.sandbox_root(run_id).exists()
