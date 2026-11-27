@@ -133,12 +133,26 @@ class Researcher:
     async def execute_research(
         self, input_value: ResearchExecutionInput, context: StageContext
     ) -> ResearchExecutionOutput:
-        questions = [question.model_dump(mode="json") for question in input_value.research_proposal.research_questions]
+        proposal = input_value.research_proposal.model_dump(mode="json")
+        processing_plan = input_value.processing_plan.model_dump(mode="json")
+        checkpoint_context = {
+            "repository_identity": input_value.source_checkpoint.repository_identity,
+            "commit_sha": input_value.source_checkpoint.commit_sha,
+            "captured_at": input_value.source_checkpoint.captured_at.isoformat(),
+            "tracked_file_count": len(input_value.source_checkpoint.file_hashes),
+            "untracked_file_count": len(input_value.source_checkpoint.untracked_file_hashes),
+        }
+        approval_ref = input_value.research_approval_ref.model_dump(mode="json")
         prompt = (
-            "Answer every approved research question.\n"
-            f"Questions:\n{render_json(questions)}\n\n"
-            "Record evidence with provenance, preserve contradictions, and list "
-            "unresolved questions explicitly."
+            "Answer only the research questions in the accepted proposal. Preserve the exact "
+            "requirements and research scope; do not perform implementation planning.\n"
+            f"Accepted research proposal and requirements:\n{render_json(proposal)}\n\n"
+            f"Approved processing plan:\n{render_json(processing_plan)}\n\n"
+            f"Approval reference:\n{render_json(approval_ref)}\n\n"
+            f"Source checkpoint context:\n{render_json(checkpoint_context)}\n\n"
+            "For every approved question, return either an evidence-backed resolution or an "
+            "explicit unresolved record. Cite exact source identities and locations, distinguish "
+            "direct observation from inference, preserve contradictions, and never invent sources."
         )
         request = RoleBackendRequest(
             operation="execute_research",
