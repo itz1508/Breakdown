@@ -146,6 +146,48 @@ def test_live_dispatch_enforces_host_scope_for_source_read(tmp_path: Path) -> No
     assert "PRIVATE_SCOPE_CONTENT" not in tool_messages[0]["content"]
 
 
+def test_live_dispatch_overrides_model_attempt_to_widen_search_scope(tmp_path: Path) -> None:
+    import asyncio
+
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "allowed.py").write_text("HOST_SCOPE_MARKER = 1", encoding="utf-8")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "private.py").write_text("HOST_SCOPE_MARKER = 2", encoding="utf-8")
+    bodies: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        bodies.append(body)
+        if len(bodies) == 1:
+            return httpx.Response(
+                200,
+                json=_completion(
+                    tool_calls=[
+                        _tool_call(
+                            "source_search",
+                            {
+                                "pattern": "HOST_SCOPE_MARKER",
+                                "scope_paths": ["."],
+                            },
+                        )
+                    ]
+                ),
+            )
+        return httpx.Response(200, json=_completion(content='{"answer": 1}'))
+
+    backend = OpenAICompatibleRoleBackend(client=_client(handler), model="m", tool_root=tmp_path)
+    request = _request(tool_names=("source_search",)).model_copy(
+        update={"tool_scope_paths": ("src",)}
+    )
+    response = asyncio.run(backend.generate(request))
+    tool_messages = [message for message in bodies[1]["messages"] if message["role"] == "tool"]
+
+    assert response.structured_output == {"answer": 1}
+    assert len(tool_messages) == 1
+    assert "src/allowed.py" in tool_messages[0]["content"]
+    assert "tests/private.py" not in tool_messages[0]["content"]
+
+
 def test_unauthorized_tool_request_rejected() -> None:
     import asyncio
 
