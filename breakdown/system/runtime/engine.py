@@ -737,6 +737,7 @@ class WorkflowEngine:
 
         verdicts = parse_verification(response, verification_input)
         return BuildVerificationOutput(task_verifications=verdicts), response.usage
+
     def _post_build(
         self,
         run_id: str,
