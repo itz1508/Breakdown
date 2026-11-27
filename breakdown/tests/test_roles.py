@@ -12,7 +12,7 @@ from pydantic import ValidationError
 from breakdown.auditor.agent import Auditor
 from breakdown.coder.agent import Coder
 from breakdown.planner.agent import Planner
-from breakdown.planner.builder.agent import Builder
+from breakdown.builder.agent import Builder
 from breakdown.researcher.agent import Researcher
 from breakdown.shared.base import RoleOperationError
 from breakdown.shared.models import (
@@ -465,7 +465,7 @@ def test_roles_import_only_shared_layers() -> None:
         package_root / "researcher" / "agent.py",
         package_root / "coder" / "agent.py",
         package_root / "planner" / "agent.py",
-        package_root / "planner" / "builder" / "agent.py",
+        package_root / "builder" / "agent.py,
     ]
     allowed = ("breakdown.shared.", "breakdown.system.tools.")
     for path in agent_files:
