@@ -583,6 +583,31 @@ async def test_planner_rejects_requirement_not_backed_by_reviewed_finding(
         await planner.create_implementation_plan(payload, _context("implementation_planning"))
 
 
+async def test_planner_gap_scan_rejects_requirement_with_no_task(
+    fake_role_backend: Any, target_repo: Path
+) -> None:
+    invalid_plan = {
+        **PLAN_PAYLOAD,
+        "implementation_plan": {
+            **PLAN_PAYLOAD["implementation_plan"],
+            "tasks": [],
+        },
+    }
+    fake_role_backend.set_output("create_implementation_plan", invalid_plan)
+    planner = Planner(backend=fake_role_backend, tools=RoleToolkit(role="planner", root=target_repo))
+    payload = ImplementationPlanningInput(
+        processing_plan=_processing_plan("implementation_plan"),
+        classified_findings=tuple(
+            ClassifiedFinding.model_validate(row)
+            for row in FINDINGS_PAYLOAD["classified_findings"]
+        ),
+        exact_user_intent="x",
+        source_checkpoint=_checkpoint(),
+    )
+    with pytest.raises((RoleOperationError, ValidationError)):
+        await planner.create_implementation_plan(payload, _context("implementation_planning"))
+
+
 async def test_planner_gap_scan_rejects_unsupported_delete_disposition(
     fake_role_backend: Any, target_repo: Path
 ) -> None:
@@ -734,6 +759,7 @@ async def test_coder_returns_file_evidence(fake_role_backend: Any, target_repo: 
     output = await coder.analyze_code(request, _context("findings_review"))
     assert output.file_evidence
     assert output.criterion is CriterionResult.VALID
+    assert fake_role_backend.requests[-1].tool_scope_paths == ("src/calc.py",)
 
 
 async def test_coder_rejects_evidence_outside_requested_scope(
