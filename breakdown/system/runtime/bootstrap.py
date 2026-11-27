@@ -116,7 +116,12 @@ class BootstrapError(RuntimeError):
     """Runtime construction failed (locked state or invalid configuration)."""
 
 
-def _validate_binding_coverage(definition: WorkflowDefinition, bindings: BackendBindingStore) -> None:
+def _validate_binding_coverage(
+    definition: WorkflowDefinition,
+    bindings: BackendBindingStore,
+    *,
+    additional_role_operations: Mapping[str, set[str]] | None = None,
+) -> None:
     """Every role that owns a workflow stage must have a binding whose
     permitted_operations cover that stage's operation (data-driven from the
     definition; D33). The builder's coding backend is not a role binding."""
@@ -124,6 +129,8 @@ def _validate_binding_coverage(definition: WorkflowDefinition, bindings: Backend
     for stage in definition.stages:
         if stage.kind is ContractKind.ROLE and stage.owner != "builder":
             role_operations.setdefault(stage.owner, set()).add(stage.operation)
+    for role, operations in (additional_role_operations or {}).items():
+        role_operations.setdefault(role, set()).update(operations)
     for role in sorted(role_operations):
         binding = bindings.for_role(role)
         if binding is None:
@@ -232,8 +239,15 @@ def build_runtime(
     if not offline_demo:
         for binding in bindings.all():
             validate_binding(binding)
-        if bindings.all():
-            _validate_binding_coverage(definition, bindings)
+        if role_backends is None or role_backends.get("verifier") is None:
+            raise BootstrapError(
+                "live runtime requires a separately injected independent verifier backend"
+            )
+        _validate_binding_coverage(
+            definition,
+            bindings,
+            additional_role_operations={"verifier": {"verify_build_task"}},
+        )
     target_root = settings.target_repo.resolve()
     state_root = (target_root / settings.state_root).resolve()
     state_root.mkdir(parents=True, exist_ok=True)
