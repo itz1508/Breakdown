@@ -549,6 +549,44 @@ async def test_coder_rejects_evidence_outside_requested_scope(
         await coder.analyze_code(request, _context("findings_review"))
 
 
+async def test_coder_rejects_invented_source_excerpt(
+    fake_role_backend: Any, target_repo: Path
+) -> None:
+    fake_role_backend.set_output(
+        "analyze_code",
+        {
+            "answer": "add is at line 1",
+            "file_evidence": [
+                {"path": "src/calc.py", "locator": "line 1", "excerpt": "def fabricated(): pass"}
+            ],
+            "criterion": "valid",
+        },
+    )
+    coder = Coder(backend=fake_role_backend, tools=RoleToolkit(role="coder", root=target_repo))
+    request = CodeAnalysisRequest(question="where is add?", scope_paths=("src",))
+    with pytest.raises(RoleOperationError, match="does not occur"):
+        await coder.analyze_code(request, _context("findings_review"))
+
+
+async def test_coder_accepts_evidence_under_requested_directory(
+    fake_role_backend: Any, target_repo: Path
+) -> None:
+    fake_role_backend.set_output(
+        "analyze_code",
+        {
+            "answer": "add is defined in src/calc.py",
+            "file_evidence": [
+                {"path": "src/calc.py", "locator": "line 1", "excerpt": "def add"}
+            ],
+            "criterion": "valid",
+        },
+    )
+    coder = Coder(backend=fake_role_backend, tools=RoleToolkit(role="coder", root=target_repo))
+    request = CodeAnalysisRequest(question="where is add?", scope_paths=("src",))
+    output = await coder.analyze_code(request, _context("findings_review"))
+    assert output.file_evidence[0].path == "src/calc.py"
+
+
 def test_roles_import_only_shared_layers() -> None:
     package_root = Path(__file__).resolve().parents[1]
     agent_files = [
