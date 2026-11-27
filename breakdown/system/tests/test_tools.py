@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from breakdown.tools import (
+from breakdown.system.tools.tools import (
     ROLE_TOOL_ALLOWLIST,
     TOOLS,
     CapabilityInspectRequest,
