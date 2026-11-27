@@ -209,7 +209,11 @@ class OpenAICompatibleRoleBackend:
                     {
                         "role": "tool",
                         "tool_call_id": call.id,
-                        "content": self._dispatch(call.function.name, call.function.arguments),
+                        "content": self._dispatch(
+                            call.function.name,
+                            call.function.arguments,
+                            scope_paths=request.tool_scope_paths,
+                        ),
                     }
                 )
         structured = await self._structured_final(request, messages, text, tokens)
@@ -244,7 +248,13 @@ class OpenAICompatibleRoleBackend:
         tokens["input"] += int(getattr(usage, "prompt_tokens", 0) or 0)
         tokens["output"] += int(getattr(usage, "completion_tokens", 0) or 0)
 
-    def _dispatch(self, name: str, arguments_json: str) -> str:
+    def _dispatch(
+        self,
+        name: str,
+        arguments_json: str,
+        *,
+        scope_paths: tuple[str, ...] = (),
+    ) -> str:
         """Canonical tool dispatch; errors are returned to the model, not raised."""
         try:
             payload = json.loads(arguments_json or "{}")
@@ -253,7 +263,13 @@ class OpenAICompatibleRoleBackend:
         if not isinstance(payload, dict):
             return json.dumps({"error": "tool arguments must be a JSON object"})
         try:
-            result = dispatch_tool(name, payload, root=self._tool_root, memory_root=self._memory_root)
+            result = dispatch_tool(
+                name,
+                payload,
+                root=self._tool_root,
+                memory_root=self._memory_root,
+                scope_paths=scope_paths,
+            )
         except Exception as exc:
             return json.dumps({"error": str(exc)})
         if isinstance(result, BaseModel):
