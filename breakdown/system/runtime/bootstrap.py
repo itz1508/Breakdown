@@ -58,6 +58,7 @@ def build_role_registry(
     sandbox_root: Path,
     agent_types: Mapping[str, Any] | None = None,
     memory_root: Path | None = None,
+    verifier_backend: RoleBackend | None = None,
 ) -> dict[str, object]:
     target_root = settings.target_repo.resolve()
     classes = _resolve_agent_types(agent_types)
@@ -65,13 +66,16 @@ def build_role_registry(
         role: RoleToolkit(role=role, root=target_root, memory_root=memory_root)
         for role in ("auditor", "researcher", "coder", "planner")
     }
-    return {
+    roles: dict[str, object] = {
         "auditor": classes["auditor"](backend=role_backend, tools=toolkits["auditor"]),
         "researcher": classes["researcher"](backend=role_backend, tools=toolkits["researcher"]),
         "coder": classes["coder"](backend=role_backend, tools=toolkits["coder"]),
         "planner": classes["planner"](backend=role_backend, tools=toolkits["planner"]),
         "builder": classes["builder"](backend=coding_backend, sandbox_root=sandbox_root),
     }
+    if verifier_backend is not None:
+        roles["verifier"] = verifier_backend
+    return roles
 
 
 def bootstrap(
@@ -81,6 +85,7 @@ def bootstrap(
     coding_backend: CodingBackend,
     sandbox_root: Path,
     agent_types: Mapping[str, Any] | None = None,
+    verifier_backend: RoleBackend | None = None,
 ) -> Application:
     definition = load_workflow(settings.workflow_path)
     bindings = BackendBindingStore.load(settings.backend_bindings_path)
@@ -93,6 +98,7 @@ def bootstrap(
         coding_backend=coding_backend,
         sandbox_root=sandbox_root,
         agent_types=agent_types,
+        verifier_backend=verifier_backend,
     )
     contracts = build_contract_registry(definition)
     validate_alignment(contracts, definition)
@@ -256,13 +262,19 @@ def build_runtime(
             role: RoleToolkit(role=role, root=target_root, memory_root=state_root)
             for role in ("auditor", "researcher", "coder", "planner")
         }
-        return {
+        roles: dict[str, object] = {
             "auditor": classes["auditor"](backend=backend_for("auditor"), tools=toolkits["auditor"]),
             "researcher": classes["researcher"](backend=backend_for("researcher"), tools=toolkits["researcher"]),
             "coder": classes["coder"](backend=backend_for("coder"), tools=toolkits["coder"]),
             "planner": classes["planner"](backend=backend_for("planner"), tools=toolkits["planner"]),
             "builder": classes["builder"](backend=coding_backend, sandbox_root=sandbox or target_root),
         }
+        # The verifier is independent of the Builder and is never inherited from the shared
+        # role backend. A missing verifier remains missing and blocks synchronization.
+        verifier_backend = (role_backends or {}).get("verifier")
+        if verifier_backend is not None:
+            roles["verifier"] = verifier_backend
+        return roles
 
     resolved_kind = runtime_kind
     if resolved_kind is None and offline_demo:
@@ -307,7 +319,7 @@ def build_live_backends(settings: Settings) -> tuple[dict[str, RoleBackend], Cod
     client = build_openai_client(settings)
     tool_root = settings.target_repo.resolve()
     role_backends: dict[str, RoleBackend] = {}
-    for role in ("auditor", "researcher", "coder", "planner"):
+    for role in ("auditor", "researcher", "coder", "planner", "verifier"):
         role_backends[role] = OpenAICompatibleRoleBackend(
             client=client,
             model=resolve_model(settings, role),
