@@ -58,19 +58,28 @@ def _build_baseline_map(
             resp = "Project asset"
 
         exports: list[str] = []
-        if root is not None and p.endswith(".py"):
-            full_path = root / file_path
-            if full_path.exists():
+        exports_status = "not_applicable"
+        if p.endswith(".py"):
+            exports_status = "not_attempted"
+            if root is not None:
+                full_path = root / file_path
                 try:
-                    tree = ast.parse(full_path.read_text(encoding="utf-8"))
-                    exports = [
-                        node.name
-                        for node in ast.iter_child_nodes(tree)
-                        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-                        and not node.name.startswith("_")
-                    ]
-                except Exception:
-                    pass
+                    source = full_path.read_text(encoding="utf-8")
+                except (OSError, UnicodeError):
+                    exports_status = "unavailable"
+                else:
+                    try:
+                        tree = ast.parse(source)
+                    except SyntaxError:
+                        exports_status = "syntax_invalid"
+                    else:
+                        exports = [
+                            node.name
+                            for node in ast.iter_child_nodes(tree)
+                            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+                            and not node.name.startswith("_")
+                        ]
+                        exports_status = "complete"
 
         entries.append(
             ScaffoldingEntry(
@@ -78,6 +87,7 @@ def _build_baseline_map(
                 category=category,
                 responsibility=resp,
                 exports=tuple(exports),
+                exports_status=exports_status,
             )
         )
 
