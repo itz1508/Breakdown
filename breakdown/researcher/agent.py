@@ -221,6 +221,15 @@ def _validate_coverage(output: ResearchExecutionOutput, input_value: ResearchExe
         raise RoleOperationError("research question identifiers must be unique within each outcome")
     if len(todo_ids) != len(set(todo_ids)) or set(todo_ids) != approved:
         raise RoleOperationError("research todo must contain each approved question exactly once")
+    unfinished = [
+        item.question_id
+        for item in output.research_todo.items
+        if item.status in {ExecutionStatus.NOT_RUN, ExecutionStatus.IN_PROGRESS}
+    ]
+    if unfinished:
+        raise RoleOperationError(
+            f"research todo contains questions not processed to a terminal state: {sorted(unfinished)}"
+        )
 
     addressed = resolved | unresolved
     missing = approved - addressed
