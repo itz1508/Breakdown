@@ -38,9 +38,13 @@ class Auditor:
         prompt = (
             "Create the bounded research proposal for this request.\n"
             f"Exact request:\n{input_value.initial_request.text}\n\n"
-            "Split the request into single candidate requirements. For each, check the Python "
-            "standard library, installed distributions, and public SDK APIs before proposing any "
-            "custom responsibility. Map uncertainty to research questions."
+            "Split the request into single candidate requirements. Inspect the Python standard "
+            "library, installed distributions, and current repository implementations using the "
+            "available tools. Treat capability inspection as distribution presence/version evidence, "
+            "not API behavior. Check public SDK APIs only when authoritative documentation or source "
+            "is actually available in the supplied context or tools; otherwise retain uncertainty "
+            "and create a focused research question. Do not claim unavailable sources were inspected. "
+            "Map uncertainty to research questions."
         )
         request = RoleBackendRequest(
             operation="create_research_proposal",
