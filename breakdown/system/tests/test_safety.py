@@ -42,6 +42,7 @@ def _all_valid(report: ChangedPathReport) -> dict[str, object]:
     return {
         "report": report,
         "approved_paths": tuple(report.all),
+        "builder_reported_paths": tuple(report.all),
         "task_results_valid": True,
         "integration_valid": True,
         "bindings_current": True,
@@ -102,6 +103,7 @@ def test_authorize_blocks_unexpected_paths(boundary: SafetyBoundary, target: Pat
     result = boundary.authorize_synchronization(
         report=report,
         approved_paths=("src/calc.py",),
+        builder_reported_paths=tuple(report.all),
         task_results_valid=True,
         integration_valid=True,
         bindings_current=True,
@@ -125,6 +127,24 @@ def test_authorize_blocks_when_any_requirement_false(boundary: SafetyBoundary, t
     result = boundary.authorize_synchronization(**kwargs)  # type: ignore[arg-type]
     assert result.authorized is False
     assert result.blocked_reason
+
+
+def test_authorize_blocks_builder_report_mismatch(boundary: SafetyBoundary, target: Path) -> None:
+    checkpoint = capture_source_checkpoint(target)
+    root = boundary.create_sandbox("run-1", checkpoint)
+    (root / "src" / "calc.py").write_text("changed\\n", encoding="utf-8")
+    report = boundary.detect_changed_paths("run-1", checkpoint)
+    result = boundary.authorize_synchronization(
+        report=report,
+        approved_paths=("src/calc.py",),
+        builder_reported_paths=("README.md",),
+        task_results_valid=True,
+        integration_valid=True,
+        bindings_current=True,
+        preconditions_current=True,
+    )
+    assert result.authorized is False
+    assert "Builder changed-path report does not match Runtime detection" in (result.blocked_reason or "")
 
 
 def test_authorize_blocks_protected_paths(boundary: SafetyBoundary, target: Path) -> None:
