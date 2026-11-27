@@ -228,6 +228,35 @@ def test_coding_backend_writes_approved_path(tmp_path: Path) -> None:
     assert result.usage is not None and result.usage.input_tokens == 11
 
 
+
+@pytest.mark.parametrize("disposition", ["delete", "move"])
+def test_live_coding_backend_blocks_unsupported_target_dispositions(
+    tmp_path: Path, disposition: str
+) -> None:
+    import asyncio
+
+    requests: list[httpx.Request] = []
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json=_completion(content='{"src/calc.py": "changed"}'))
+
+    backend = OpenAICompatibleCodingBackend(client=_client(handler), model="m")
+    base_request = _coding_request(sandbox)
+    target = base_request.task.target_paths[0].model_copy(
+        update={"disposition": disposition}
+    )
+    task = base_request.task.model_copy(update={"target_paths": (target,)})
+    coding_request = base_request.model_copy(update={"task": task})
+
+    result = asyncio.run(backend.apply_task(coding_request))
+
+    assert result.execution_result is ExecutionResult.BLOCKED
+    assert "does not support target dispositions" in result.observation
+    assert requests == []
+
 def test_resolve_model_supports_builder_and_verifier_tiers() -> None:
     settings = Settings(
         model="default-tier",
