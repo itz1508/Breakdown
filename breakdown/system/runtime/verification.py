@@ -195,10 +195,10 @@ def parse_verification(
 
         criterion = verdict.criterion
         observation = verdict.actual_observation.strip()
-        if verdict.expected and verdict.expected != task.expected_result:
+        if verdict.expected != task.expected_result:
             criterion = CriterionResult.NOT_VALID
             observation = (
-                "verifier evaluated a different expected result than the approved plan"
+                "verifier omitted or changed the expected result from the approved plan"
             )
         elif criterion is CriterionResult.VALID and not observation:
             criterion = CriterionResult.NOT_VALID
@@ -213,6 +213,10 @@ def parse_verification(
         )
         required_file_missing = any(
             file.status == "missing" and file.disposition != "delete"
+            for file in task.observed_files
+        )
+        deleted_file_still_present = any(
+            file.status == "read" and file.disposition == "delete"
             for file in task.observed_files
         )
         if criterion is CriterionResult.VALID and unexecuted_commands:
@@ -230,6 +234,11 @@ def parse_verification(
             criterion = CriterionResult.NOT_VALID
             observation = (
                 f"{observation}; one or more required target files are missing"
+            ).strip("; ")
+        elif criterion is CriterionResult.VALID and deleted_file_still_present:
+            criterion = CriterionResult.NOT_VALID
+            observation = (
+                f"{observation}; a target scheduled for deletion is still present"
             ).strip("; ")
 
         results.append(
