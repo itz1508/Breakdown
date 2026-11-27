@@ -161,10 +161,6 @@ def _finish_demo_outputs(proposal: dict[str, Any], research: dict[str, Any]) -> 
         "execute_research": research,
         "review_research_findings": findings,
         "create_implementation_plan": plan,
-        "verify_build_task": {
-            "output_model": "BuildVerificationOutput",
-            "task_verifications": [],
-        },
     }
 
 
