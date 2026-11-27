@@ -630,6 +630,7 @@ class TaskResult(StrictModel):
     expected: str = Field(min_length=1)
     actual_observation: str = Field(min_length=1)
     attempts: int = Field(default=1, ge=1)
+    reported_changed_paths: tuple[str, ...] = ()
     evidence_refs: tuple[str, ...] = ()
 
 
