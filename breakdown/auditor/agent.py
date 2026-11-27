@@ -95,3 +95,13 @@ def _validate_findings(output: FindingsReviewOutput, input_value: FindingsReview
     ids = [finding.finding_id for finding in output.classified_findings]
     if len(ids) != len(set(ids)):
         raise RoleOperationError("finding ids must be unique")
+    known_requirement_ids = {
+        requirement.requirement_id for requirement in input_value.research_proposal.candidate_requirements
+    }
+    unknown_requirement_refs = {
+        finding.requirement_ref for finding in output.classified_findings
+    } - known_requirement_ids
+    if unknown_requirement_refs:
+        raise RoleOperationError(
+            f"classified findings reference unknown requirements: {sorted(unknown_requirement_refs)}"
+        )
