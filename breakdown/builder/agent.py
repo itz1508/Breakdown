@@ -86,10 +86,30 @@ class Builder:
         )
 
     async def _execute_task(self, task: BuildTask) -> TaskResult:
+        approved_paths = {target.path for target in task.target_paths}
+        unsupported_operations = sorted(
+            {
+                target.disposition
+                for target in task.target_paths
+                if target.disposition in {"delete", "move"}
+            }
+        )
+        if unsupported_operations:
+            return TaskResult(
+                task_id=task.task_id,
+                sequence=task.sequence,
+                criterion=CriterionResult.UNCERTAINTY,
+                execution_result=ExecutionResult.BLOCKED,
+                expected=task.expected_result,
+                actual_observation=(
+                    "current coding backend does not support target dispositions: "
+                    f"{unsupported_operations}"
+                ),
+            )
+
         prior_error = ""
         attempts = 0
         max_attempts = PER_TASK_CORRECTION_CAP + 1
-        approved_paths = {target.path for target in task.target_paths}
         reported_paths: list[str] = []
         while True:
             attempts += 1
@@ -131,8 +151,18 @@ class Builder:
                 )
 
             criterion = _criterion_for(result.execution_result)
-            if criterion is CriterionResult.VALID and not reported_paths:
+            missing_paths = approved_paths - set(reported_paths)
+            if result.execution_result is ExecutionResult.COMPLETED and missing_paths:
+                if attempts < max_attempts:
+                    prior_error = (
+                        "The completed response omitted changed-path receipts for approved "
+                        f"targets: {sorted(missing_paths)}. Complete only those approved targets."
+                    )
+                    continue
                 criterion = CriterionResult.UNCERTAINTY
+            elif criterion is CriterionResult.VALID and missing_paths:
+                criterion = CriterionResult.UNCERTAINTY
+
             terminal = (
                 criterion is CriterionResult.VALID
                 or criterion is CriterionResult.UNCERTAINTY
@@ -141,9 +171,10 @@ class Builder:
             )
             if terminal:
                 observation = result.observation
-                if result.execution_result is ExecutionResult.COMPLETED and not reported_paths:
+                if result.execution_result is ExecutionResult.COMPLETED and missing_paths:
                     observation = (
-                        f"{observation}; backend reported no changed paths for the completed task"
+                        f"{observation}; backend did not report changes for approved target paths: "
+                        f"{sorted(missing_paths)}"
                     )
                 return TaskResult(
                     task_id=task.task_id,
