@@ -588,14 +588,30 @@ async def test_builder_reports_only_backend_observed_changed_paths(tmp_path: Pat
         CodingBackendResult(
             execution_result=ExecutionResult.COMPLETED,
             observation="updated src/calc.py",
-            reported_changed_paths=("src/calc.py",),
+            reported_changed_paths=("src/calc.py", "tests/test_calc.py"),
         )
     )
     builder = Builder(backend=backend, sandbox_root=tmp_path / "sandbox")
     output = await builder.execute_build(_build_input(), _context("build_execution"))
     assert output.synchronization_prepared is True
-    assert output.applied_changes == ("src/calc.py",)
-    assert output.observed_changed_paths == ("src/calc.py",)
+    assert output.applied_changes == ("src/calc.py", "tests/test_calc.py")
+    assert output.observed_changed_paths == ("src/calc.py", "tests/test_calc.py")
+    assert output.task_results[0].reported_changed_paths == ("src/calc.py", "tests/test_calc.py")
+
+
+async def test_builder_retries_until_every_target_has_a_change_receipt(
+    fake_coding_backend: Any, tmp_path: Path
+) -> None:
+    fake_coding_backend.result = CodingBackendResult(
+        execution_result=ExecutionResult.COMPLETED,
+        observation="updated only src/calc.py",
+        reported_changed_paths=("src/calc.py",),
+    )
+    builder = Builder(backend=fake_coding_backend, sandbox_root=tmp_path / "sandbox")
+    output = await builder.execute_build(_build_input(), _context("build_execution"))
+    assert output.synchronization_prepared is False
+    assert output.task_results[0].criterion is CriterionResult.UNCERTAINTY
+    assert output.task_results[0].attempts == 3
     assert output.task_results[0].reported_changed_paths == ("src/calc.py",)
 
 
