@@ -353,12 +353,6 @@ stages:
     - invented_source_identity
     - invented_repository_path
     - unverified_claim_as_fact
-  delegation:
-    default_workers: 1
-    maximum_parallel_workers: 3
-    maximum_delegation_rounds: 3
-    worker_access: read_only
-    worker_output_authority: evidence_input_only
   completion_criteria:
   - every_approved_question_addressed
   - material_findings_have_provenance
