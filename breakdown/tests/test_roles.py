@@ -465,13 +465,13 @@ def test_roles_import_only_shared_layers() -> None:
         package_root / "researcher" / "agent.py",
         package_root / "coder" / "agent.py",
         package_root / "planner" / "agent.py",
-        package_root / "builder" / "agent.py,
+        package_root / "builder" / "agent.py",
     ]
     allowed = ("breakdown.agents.", "breakdown.shared.", "breakdown.system.tools.")
     for path in agent_files:
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("breakdown."):
-                assert node.module.startswith(allowed), f"{path.name} imports outside shared/system-tools: {node.module}"
+                assert node.module.startswith(allowed), f"{path.name} imports outside shared agent-support/system tools: {node.module}"
         if path.parent.name == "builder":
             assert "breakdown.shared.model_loop" not in path.read_text(encoding="utf-8")
