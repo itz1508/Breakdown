@@ -224,7 +224,7 @@ def _validation_rows(results: list[TaskResult]) -> tuple[CheckResult, ...]:
 
 
 def _revalidate_bindings(input_value: BuildExecutionInput) -> None:
-    """Builder revalidates approval bindings before source execution."""
+    """Check local approval fields; Host owns cryptographic/binding verification before dispatch."""
     if input_value.approved_plan_revision != input_value.implementation_plan.revision:
         raise RoleOperationError("approved plan revision does not match the implementation plan")
     if input_value.preflight_result.criterion is not CriterionResult.VALID:
