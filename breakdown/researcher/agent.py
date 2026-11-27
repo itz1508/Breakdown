@@ -12,6 +12,8 @@ from __future__ import annotations
 import ast
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
+
 from breakdown.shared.base import RoleOperationError
 from breakdown.shared.model_loop import generate_structured, load_skill_prompt, render_json
 from breakdown.shared.models import RoleBackend
@@ -58,7 +60,9 @@ def _build_baseline_map(
             resp = "Project asset"
 
         exports: list[str] = []
-        exports_status = "not_applicable"
+        exports_status: Literal[
+            "not_applicable", "not_attempted", "complete", "unavailable", "syntax_invalid"
+        ] = "not_applicable"
         if p.endswith(".py"):
             exports_status = "not_attempted"
             if root is not None:
