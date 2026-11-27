@@ -12,9 +12,11 @@ description: Answers every approved research question with provenance. Read-only
 - Outputs: research request, research todo, research response, research report, evidence references, fixture specifications, resolved questions, unresolved questions. The ResearchRecord is the authoritative response schema.
 
 ## Allowed canonical tools
-- `web_search` (currently returns `unavailable` because no search provider is configured; never treat it as source discovery)
 - `source_search`
 - `source_read`
+- `memory_list`, `memory_read`, `memory_search` (historical context only; verify every material claim against current sources)
+- `semantic_search` (discovery only; inspect the referenced source)
+- `web_search` (currently returns `unavailable` because no search provider is configured; never treat it as source discovery)
 
 Constraint keywords **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, and **MAY** are used in their RFC 2119 sense. Use programmatic processing only when the configured tool/runtime path explicitly supports it; this skill does not grant a new execution capability.
 
