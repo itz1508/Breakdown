@@ -8,7 +8,7 @@ Workflow dispatch and permissions remain Runtime responsibilities.
 from __future__ import annotations
 
 import re
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
 
 from breakdown.shared.base import RoleOperationError
 from breakdown.shared.model_loop import generate_structured, load_skill_prompt, render_json
