@@ -23,7 +23,7 @@ packages = ["breakdown"]
 "breakdown/auditor/SKILL.md" = "breakdown/auditor/SKILL.md"
 "breakdown/coder/SKILL.md" = "breakdown/coder/SKILL.md"
 "breakdown/planner/SKILL.md" = "breakdown/planner/SKILL.md"
-"breakdown/planner/builder/SKILL.md" = "breakdown/planner/builder/SKILL.md"
+"breakdown/builder/SKILL.md" = "breakdown/builder/SKILL.md"
 
 [dependency-groups]
 dev = [
