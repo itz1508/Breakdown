@@ -92,31 +92,120 @@ class Auditor:
 
 
 def _validate_proposal(output: ResearchProposalOutput) -> None:
-    ids = [requirement.requirement_id for requirement in output.candidate_requirements]
-    if len(ids) != len(set(ids)):
+    requirement_ids = [
+        requirement.requirement_id for requirement in output.candidate_requirements
+    ]
+    if len(requirement_ids) != len(set(requirement_ids)):
         raise RoleOperationError("candidate requirement ids must be unique")
-    question_ids = {question.question_id for question in output.research_questions}
+
+    question_ids = [question.question_id for question in output.research_questions]
+    if len(question_ids) != len(set(question_ids)):
+        raise RoleOperationError("research question ids must be unique")
+
+    known_requirements = set(requirement_ids)
     for requirement in output.candidate_requirements:
         if requirement.research_question_ref and requirement.research_question_ref not in question_ids:
             raise RoleOperationError("coverage uncertainty must reference a declared research question")
 
+    for responsibility in output.candidate_source_responsibilities:
+        unknown = set(responsibility.requirement_refs) - known_requirements
+        if unknown:
+            raise RoleOperationError(
+                f"source responsibilities reference unknown requirements: {sorted(unknown)}"
+            )
+
 
 def _validate_findings(output: FindingsReviewOutput, input_value: FindingsReviewInput) -> None:
-    input_topics = {contradiction.topic for contradiction in input_value.research_record.contradictions}
-    preserved_topics = {contradiction.topic for contradiction in output.contradictions_preserved}
-    missing = input_topics - preserved_topics
-    if missing:
-        raise RoleOperationError(f"contradictions must be preserved: {sorted(missing)}")
-    ids = [finding.finding_id for finding in output.classified_findings]
-    if len(ids) != len(set(ids)):
-        raise RoleOperationError("finding ids must be unique")
+    proposal = input_value.research_proposal
+    research = input_value.research_record
     known_requirement_ids = {
-        requirement.requirement_id for requirement in input_value.research_proposal.candidate_requirements
+        requirement.requirement_id for requirement in proposal.candidate_requirements
     }
-    unknown_requirement_refs = {
-        finding.requirement_ref for finding in output.classified_findings
-    } - known_requirement_ids
-    if unknown_requirement_refs:
+    finding_ids = [finding.finding_id for finding in output.classified_findings]
+    if len(finding_ids) != len(set(finding_ids)):
+        raise RoleOperationError("finding ids must be unique")
+
+    finding_requirement_ids = {finding.requirement_ref for finding in output.classified_findings}
+    unknown_requirement_refs = finding_requirement_ids - known_requirement_ids
+    missing_requirement_refs = known_requirement_ids - finding_requirement_ids
+    if unknown_requirement_refs or missing_requirement_refs:
         raise RoleOperationError(
-            f"classified findings reference unknown requirements: {sorted(unknown_requirement_refs)}"
+            "classified findings must cover exactly the accepted requirements; "
+            f"missing={sorted(missing_requirement_refs)}, unknown={sorted(unknown_requirement_refs)}"
         )
+
+    evidence_by_id = {evidence.evidence_id: evidence for evidence in research.evidence}
+    if len(evidence_by_id) != len(research.evidence):
+        raise RoleOperationError("research evidence identifiers must be unique")
+    known_evidence_ids = set(evidence_by_id)
+    for finding in output.classified_findings:
+        for trace_step in finding.decision_trace:
+            if trace_step.evidence_ref and trace_step.evidence_ref not in known_evidence_ids:
+                raise RoleOperationError(
+                    f"finding {finding.finding_id!r} references unknown evidence "
+                    f"{trace_step.evidence_ref!r}"
+                )
+
+    input_contradictions = {
+        (item.topic, item.positions, item.evidence_refs)
+        for item in research.contradictions
+    }
+    output_contradictions = {
+        (item.topic, item.positions, item.evidence_refs)
+        for item in output.contradictions_preserved
+    }
+    if not input_contradictions <= output_contradictions:
+        missing = input_contradictions - output_contradictions
+        raise RoleOperationError(f"contradictions must be preserved exactly: {sorted(missing)}")
+    for contradiction in output.contradictions_preserved:
+        unknown_refs = set(contradiction.evidence_refs) - known_evidence_ids
+        if unknown_refs:
+            raise RoleOperationError(
+                f"contradiction {contradiction.topic!r} references unknown evidence: "
+                f"{sorted(unknown_refs)}"
+            )
+
+    input_fixture_ids = {fixture.fixture_id for fixture in research.fixture_specifications}
+    output_fixture_ids = {
+        fixture.fixture_id for fixture in output.reviewed_fixture_specifications
+    }
+    if input_fixture_ids != output_fixture_ids:
+        raise RoleOperationError(
+            "reviewed fixture specifications must preserve source fixture identifiers; "
+            f"missing={sorted(input_fixture_ids - output_fixture_ids)}, "
+            f"unknown={sorted(output_fixture_ids - input_fixture_ids)}"
+        )
+
+    input_unresolved_ids = {
+        question.question_id for question in research.unresolved_questions
+    }
+    output_unresolved_ids = {
+        question.question_id for question in output.reviewed_unresolved_questions
+    }
+    if input_unresolved_ids != output_unresolved_ids:
+        raise RoleOperationError(
+            "reviewed unresolved questions must preserve source question identifiers; "
+            f"missing={sorted(input_unresolved_ids - output_unresolved_ids)}, "
+            f"unknown={sorted(output_unresolved_ids - input_unresolved_ids)}"
+        )
+
+    if output.normalized_evidence:
+        normalized_by_ref = {
+            item.evidence_ref: item for item in output.normalized_evidence
+        }
+        if len(normalized_by_ref) != len(output.normalized_evidence):
+            raise RoleOperationError("normalized evidence references must be unique")
+        if set(normalized_by_ref) != known_evidence_ids:
+            raise RoleOperationError(
+                "normalized evidence must cover exactly the Researcher evidence identifiers"
+            )
+        for evidence_ref, normalized in normalized_by_ref.items():
+            source = evidence_by_id[evidence_ref]
+            if (
+                normalized.source_identity != source.source_identity
+                or normalized.source_location != source.source_location
+                or normalized.source_version != source.source_version
+            ):
+                raise RoleOperationError(
+                    f"normalized evidence {evidence_ref!r} changed source provenance"
+                )
