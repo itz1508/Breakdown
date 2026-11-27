@@ -6,7 +6,8 @@ The active package layout is recorded in [Current Architecture and Workflow](cur
 
 - `shared/`: base, models, configuration and model-loop support
 - `researcher/`, `auditor/`, `coder/`, `planner/`: independent agent packages
-- `planner/builder/`: Builder package; no shared model loop
+- `builder/`: independent Builder package; no shared model loop
+- `agents/`: shared prompt assembly and source-grounded framework
 - `system/runtime/`: runtime orchestration and backend wiring
 - `system/storage/`: persistence and checkpoint/digest owners
 - `system/tools/`: canonical tools and role-scoped dispatch
