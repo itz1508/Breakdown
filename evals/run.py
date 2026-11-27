@@ -357,11 +357,11 @@ PLAN_PROFILE: Mapping[str, Any] = {
                         "kind": "observation",
                     }
                 ],
-                "required_evidence": ["test output"],
+                "required_evidence": ["source inspection evidence"],
             }
         ],
         "integration_checks": [],
-        "success_criteria": [{"criterion": "subtract works and is tested", "measurable": True}],
+        "success_criteria": [{"criterion": "subtract implementation is present", "measurable": True}],
     },
     "planning_review_result": {"cohesion": "valid", "notes": ""},
     "build_execution_processing_plan": {
