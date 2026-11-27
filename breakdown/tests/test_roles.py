@@ -586,25 +586,32 @@ async def test_planner_rejects_requirement_not_backed_by_reviewed_finding(
 async def test_planner_gap_scan_rejects_requirement_with_no_task(
     fake_role_backend: Any, target_repo: Path
 ) -> None:
-    invalid_plan = {
-        **PLAN_PAYLOAD,
-        "implementation_plan": {
-            **PLAN_PAYLOAD["implementation_plan"],
-            "tasks": [],
-        },
+    second_finding = {
+        **FINDINGS_PAYLOAD["classified_findings"][0],
+        "finding_id": "f-2",
+        "requirement_ref": "req-2",
+        "claim": "second requirement is supported",
     }
-    fake_role_backend.set_output("create_implementation_plan", invalid_plan)
+    fake_role_backend.set_output("create_implementation_plan", PLAN_PAYLOAD)
     planner = Planner(backend=fake_role_backend, tools=RoleToolkit(role="planner", root=target_repo))
     payload = ImplementationPlanningInput(
         processing_plan=_processing_plan("implementation_plan"),
-        classified_findings=tuple(
-            ClassifiedFinding.model_validate(row)
-            for row in FINDINGS_PAYLOAD["classified_findings"]
+        classified_findings=(
+            ClassifiedFinding.model_validate(FINDINGS_PAYLOAD["classified_findings"][0]),
+            ClassifiedFinding.model_validate(second_finding),
         ),
         exact_user_intent="x",
         source_checkpoint=_checkpoint(),
     )
-    with pytest.raises((RoleOperationError, ValidationError)):
+    plan_with_unassigned = {
+        **PLAN_PAYLOAD,
+        "implementation_plan": {
+            **PLAN_PAYLOAD["implementation_plan"],
+            "requirement_refs": ["req-1", "req-2"],
+        },
+    }
+    fake_role_backend.set_output("create_implementation_plan", plan_with_unassigned)
+    with pytest.raises(RoleOperationError, match="assigned to no task"):
         await planner.create_implementation_plan(payload, _context("implementation_planning"))
 
 
