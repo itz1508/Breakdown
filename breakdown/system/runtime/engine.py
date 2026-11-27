@@ -549,8 +549,8 @@ class WorkflowEngine:
             run_id=run_id,
             stage_id=stage_id,
             payload={
-                "tokens": usage.input_tokens + usage.output_tokens if usage is not None else 0,
-                "tool_calls": usage.tool_calls if usage is not None else 0,
+                "tokens": tokens_used - record.tokens_used,
+                "tool_calls": tool_calls_used - record.tool_calls_used,
             },
         )
         next_stage = resolve_next_stage(self.definition, stage_id)
