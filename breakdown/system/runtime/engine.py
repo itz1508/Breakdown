@@ -41,6 +41,7 @@ from breakdown.shared.models import (
     CriterionResult,
     EventType,
     FailureRecord,
+    FrozenPlan,
     FindingsReviewInput,
     FixtureSpecification,
     ImplementationPlan,
@@ -85,7 +86,12 @@ from breakdown.system.runtime.verification import (
 )
 from breakdown.system.safety import SafetyBoundary
 from breakdown.system.storage.artifact_store import ArtifactStore
-from breakdown.system.storage.canonical import definition_digest as compute_definition_digest
+from breakdown.system.storage.canonical import (
+    approval_hash as compute_approval_hash,
+    definition_digest as compute_definition_digest,
+    frozen_plan_hash as compute_frozen_plan_hash,
+    source_checkpoint_hash,
+)
 from breakdown.system.storage.checkpoint import capture_source_checkpoint, checkpoint_is_fresh
 from breakdown.system.storage.events import EventStore
 from breakdown.system.storage.run_store import RunStore
@@ -364,7 +370,32 @@ class WorkflowEngine:
         sandbox: Path | None = None
         approved_checkpoint: SourceCheckpoint | None = None
         if stage_id == "build_execution":
-            approved_checkpoint = self._load_model(record, "approved_source_checkpoint", SourceCheckpoint)
+            if not isinstance(input_value, BuildExecutionInput):
+                self._handle_stage_failure(
+                    run_id,
+                    revision,
+                    record,
+                    stage_id,
+                    "Host build admission received an invalid build input contract",
+                    error_type="approval_binding",
+                    allow_recovery=False,
+                    attempt=record.stage_attempts.get(stage_id, 0) + 1,
+                )
+                return
+            admission_error = self._validate_build_admission(record, input_value)
+            if admission_error is not None:
+                self._handle_stage_failure(
+                    run_id,
+                    revision,
+                    record,
+                    stage_id,
+                    admission_error,
+                    error_type="approval_binding",
+                    allow_recovery=False,
+                    attempt=record.stage_attempts.get(stage_id, 0) + 1,
+                )
+                return
+            approved_checkpoint = input_value.approved_source_checkpoint
             sandbox = self.stores.safety.create_sandbox(run_id, approved_checkpoint)
         roles = self.role_factory(sandbox)
         attempt = record.stage_attempts.get(stage_id, 0) + 1
@@ -688,6 +719,160 @@ class WorkflowEngine:
             )
             return f"preflight not valid: {blocked}"
         return None
+
+    def _validate_build_admission(
+        self,
+        record: RunRecord,
+        input_value: BuildExecutionInput,
+    ) -> str | None:
+        """Verify exact approval/package/source bindings before creating a sandbox."""
+        try:
+            artifacts = record.produced_artifacts
+            required = (
+                "plan_approval_record",
+                "implementation_plan",
+                "frozen_plan",
+                "frozen_plan_hash",
+                "preflight_result",
+                "build_execution_processing_plan",
+                "source_checkpoint",
+                "approved_source_checkpoint",
+                "approved_plan_revision",
+            )
+            missing = [key for key in required if key not in artifacts]
+            if missing:
+                return f"Host build admission is missing bound artifacts: {sorted(missing)}"
+
+            approval_ref = artifacts["plan_approval_record"]
+            if approval_ref != input_value.plan_approval_ref:
+                return "build input approval reference does not match the current run artifact"
+            if self.stores.artifacts.get_digest(
+                approval_ref.artifact_key, approval_ref.revision
+            ) != approval_ref.digest:
+                return "plan approval record digest does not match Storage"
+
+            approval = self.stores.artifacts.get_model(
+                PlanApprovalRecord, approval_ref.artifact_key, approval_ref.revision
+            )
+            decision = approval.decision
+            if decision.stage_id != "plan_approval" or decision.action != "approve":
+                return "Host build admission requires the recorded plan_approval approve decision"
+            if decision.run_id != record.run_id or decision.session_id != record.session_id:
+                return "plan approval decision is not bound to the current run/session"
+
+            frozen_ref = artifacts["frozen_plan"]
+            if approval.frozen_plan_ref != frozen_ref:
+                return "plan approval is bound to a different frozen plan reference"
+            if self.stores.artifacts.get_digest(
+                frozen_ref.artifact_key, frozen_ref.revision
+            ) != frozen_ref.digest:
+                return "frozen plan digest does not match Storage"
+            frozen = self.stores.artifacts.get_model(
+                FrozenPlan, frozen_ref.artifact_key, frozen_ref.revision
+            )
+
+            plan_ref = artifacts["implementation_plan"]
+            if self.stores.artifacts.get_digest(
+                plan_ref.artifact_key, plan_ref.revision
+            ) != plan_ref.digest:
+                return "implementation plan digest does not match Storage"
+            plan = self.stores.artifacts.get_model(
+                ImplementationPlan, plan_ref.artifact_key, plan_ref.revision
+            )
+            if frozen.plan != plan or input_value.implementation_plan != plan:
+                return "approved implementation plan differs from the frozen plan"
+            if (
+                approval.implementation_plan_revision != plan.revision
+                or input_value.approved_plan_revision != plan.revision
+                or self._load_value(record, "approved_plan_revision") != plan.revision
+            ):
+                return "approved plan revision does not match the frozen implementation plan"
+
+            source_ref = artifacts["source_checkpoint"]
+            if approval.source_checkpoint_ref != source_ref:
+                return "plan approval is bound to a different source checkpoint reference"
+            if self.stores.artifacts.get_digest(
+                source_ref.artifact_key, source_ref.revision
+            ) != source_ref.digest:
+                return "source checkpoint digest does not match Storage"
+            source_checkpoint = self.stores.artifacts.get_model(
+                SourceCheckpoint, source_ref.artifact_key, source_ref.revision
+            )
+            approved_checkpoint_ref = artifacts["approved_source_checkpoint"]
+            approved_checkpoint = self.stores.artifacts.get_model(
+                SourceCheckpoint,
+                approved_checkpoint_ref.artifact_key,
+                approved_checkpoint_ref.revision,
+            )
+            expected_checkpoint_hash = source_checkpoint_hash(approved_checkpoint)
+            if (
+                source_checkpoint_hash(source_checkpoint) != expected_checkpoint_hash
+                or source_checkpoint_hash(frozen.source_checkpoint) != expected_checkpoint_hash
+                or source_checkpoint_hash(input_value.approved_source_checkpoint) != expected_checkpoint_hash
+                or approval.source_checkpoint_hash != expected_checkpoint_hash
+            ):
+                return "approved source checkpoint does not match the frozen/approval binding"
+            if not checkpoint_is_fresh(approved_checkpoint, self.stores.safety.target_root):
+                return "approved source checkpoint is stale; Builder was not dispatched"
+
+            frozen_hash = compute_frozen_plan_hash(
+                plan, approved_checkpoint, record.definition_version
+            )
+            frozen_hash_ref = artifacts["frozen_plan_hash"]
+            frozen_hash_value = self.stores.artifacts.get_model(
+                StoredValue, frozen_hash_ref.artifact_key, frozen_hash_ref.revision
+            ).value
+            if (
+                frozen.frozen_plan_hash != frozen_hash
+                or str(frozen_hash_value) != frozen_hash
+                or input_value.frozen_plan_hash != frozen_hash
+                or approval.frozen_plan_hash != frozen_hash
+            ):
+                return "frozen plan hash does not match the approved package"
+
+            processing_ref = artifacts["build_execution_processing_plan"]
+            if approval.build_execution_processing_plan_ref != processing_ref:
+                return "plan approval is bound to a different build processing plan"
+            if self.stores.artifacts.get_digest(
+                processing_ref.artifact_key, processing_ref.revision
+            ) != approval.build_execution_processing_plan_digest:
+                return "build processing plan digest does not match the approval binding"
+            processing = self.stores.artifacts.get_model(
+                ProcessingPlan, processing_ref.artifact_key, processing_ref.revision
+            )
+            if processing != input_value.processing_plan:
+                return "build processing plan differs from the approved processing plan"
+
+            preflight_ref = artifacts["preflight_result"]
+            if approval.preflight_result_ref != preflight_ref:
+                return "plan approval is bound to a different preflight result"
+            if self.stores.artifacts.get_digest(
+                preflight_ref.artifact_key, preflight_ref.revision
+            ) != approval.preflight_result_digest:
+                return "preflight result digest does not match the approval binding"
+            preflight = self.stores.artifacts.get_model(
+                PreflightResult, preflight_ref.artifact_key, preflight_ref.revision
+            )
+            if preflight.criterion is not CriterionResult.VALID:
+                return "approved preflight result is no longer valid"
+            if preflight != input_value.preflight_result:
+                return "build input preflight result differs from the approved preflight artifact"
+
+            expected_approval_hash = compute_approval_hash(
+                frozen_hash, approved_checkpoint, decision
+            )
+            if (
+                not approval.approval_hash
+                or approval.approval_hash != expected_approval_hash
+                or input_value.approval_hash != expected_approval_hash
+            ):
+                return "approval hash does not match the approved plan/source/decision binding"
+            return None
+        except Exception as exc:
+            return (
+                "Host build admission could not verify the approved package; "
+                f"Builder was not dispatched ({type(exc).__name__})"
+            )
 
     def _approval_bindings_current(self, record: RunRecord) -> bool:
         ref = record.produced_artifacts.get("plan_approval_record")
