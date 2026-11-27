@@ -170,7 +170,7 @@ PLAN_PAYLOAD: dict[str, Any] = {
                     {"path": "src/calc.py", "disposition": "modify"},
                     {"path": "tests/test_calc.py", "disposition": "modify"},
                 ],
-                "source_evidence": ["f-1"],
+                "source_evidence": ["ev-1"],
                 "capability_reuse": [],
                 "reference_ids": [],
                 "expected_result": "src/calc.py defines subtract(a, b) and returns a - b",
