@@ -133,7 +133,7 @@ def _finish_demo_outputs(proposal: dict[str, Any], research: dict[str, Any]) -> 
                     "responsibility": "create the demo change record",
                     "requirement_refs": ["demo-req-1"],
                     "target_paths": [{"path": "DEMO_CHANGE.md", "disposition": "create"}],
-                    "source_evidence": ["demo-f-1"],
+                    "source_evidence": ["demo-ev-1"],
                     "capability_reuse": [],
                     "reference_ids": [],
                     "expected_result": "DEMO_CHANGE.md contains the request text provided to this run",
