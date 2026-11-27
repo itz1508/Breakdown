@@ -107,22 +107,50 @@ def _build_baseline_map(
 
 
 def _normalize_evidence(record: ResearchRecord) -> tuple[NormalizedEvidence, ...]:
-    """Normalize evidence records while strictly preserving provenance."""
-    if record.normalized_evidence:
-        return record.normalized_evidence
-    normalized: list[NormalizedEvidence] = []
-    for ev in record.evidence:
-        normalized.append(
+    """Normalize evidence without allowing reference or provenance drift."""
+    evidence_by_id = {evidence.evidence_id: evidence for evidence in record.evidence}
+    if len(evidence_by_id) != len(record.evidence):
+        raise RoleOperationError("research evidence identifiers must be unique")
+
+    if not record.normalized_evidence:
+        return tuple(
             NormalizedEvidence(
-                evidence_ref=ev.evidence_id,
-                normalized_form=ev.claim,
-                source_identity=ev.source_identity,
-                source_location=ev.source_location,
-                source_version=ev.source_version,
+                evidence_ref=evidence.evidence_id,
+                normalized_form=evidence.claim,
+                source_identity=evidence.source_identity,
+                source_location=evidence.source_location,
+                source_version=evidence.source_version,
                 provenance_preserved=True,
             )
+            for evidence in record.evidence
         )
-    return tuple(normalized)
+
+    normalized_by_ref = {
+        evidence.evidence_ref: evidence for evidence in record.normalized_evidence
+    }
+    if len(normalized_by_ref) != len(record.normalized_evidence):
+        raise RoleOperationError("normalized evidence references must be unique")
+
+    missing = set(evidence_by_id) - set(normalized_by_ref)
+    unknown = set(normalized_by_ref) - set(evidence_by_id)
+    if missing or unknown:
+        raise RoleOperationError(
+            f"normalized evidence references do not match source evidence; "
+            f"missing={sorted(missing)}, unknown={sorted(unknown)}"
+        )
+
+    for evidence_ref, normalized in normalized_by_ref.items():
+        source = evidence_by_id[evidence_ref]
+        if (
+            normalized.source_identity != source.source_identity
+            or normalized.source_location != source.source_location
+            or normalized.source_version != source.source_version
+        ):
+            raise RoleOperationError(
+                f"normalized evidence {evidence_ref!r} changed source provenance"
+            )
+
+    return record.normalized_evidence
 
 
 class Researcher:
@@ -184,18 +212,49 @@ class Researcher:
 def _validate_coverage(output: ResearchExecutionOutput, input_value: ResearchExecutionInput) -> None:
     record = output.research_record
     approved = {question.question_id for question in input_value.research_proposal.research_questions}
-    resolved = {question.question_id for question in record.resolved_questions}
-    unresolved = {question.question_id for question in record.unresolved_questions}
-    missing = approved - (resolved | unresolved)
-    if missing:
-        raise RoleOperationError(f"every approved question must be addressed; missing: {sorted(missing)}")
+    resolved_ids = [question.question_id for question in record.resolved_questions]
+    unresolved_ids = [question.question_id for question in record.unresolved_questions]
+    resolved = set(resolved_ids)
+    unresolved = set(unresolved_ids)
+    todo_ids = [item.question_id for item in output.research_todo.items]
+    if len(resolved_ids) != len(resolved) or len(unresolved_ids) != len(unresolved):
+        raise RoleOperationError("research question identifiers must be unique within each outcome")
+    if len(todo_ids) != len(set(todo_ids)) or set(todo_ids) != approved:
+        raise RoleOperationError("research todo must contain each approved question exactly once")
+
+    addressed = resolved | unresolved
+    missing = approved - addressed
+    unknown = addressed - approved
+    if missing or unknown:
+        raise RoleOperationError(
+            f"research question coverage differs from approved scope; "
+            f"missing={sorted(missing)}, unknown={sorted(unknown)}"
+        )
     overlap = resolved & unresolved
     if overlap:
         raise RoleOperationError(f"questions cannot be both resolved and unresolved: {sorted(overlap)}")
 
-    # Provenance check: every material claim carries provenance
-    for ev in record.evidence:
-        if not ev.source_identity or not ev.source_location:
+    evidence_ids = {evidence.evidence_id for evidence in record.evidence}
+    if len(evidence_ids) != len(record.evidence):
+        raise RoleOperationError("research evidence identifiers must be unique")
+    for question in record.resolved_questions:
+        unknown_refs = set(question.evidence_refs) - evidence_ids
+        if unknown_refs:
             raise RoleOperationError(
-                f"material finding {ev.evidence_id} missing provenance (source_identity or source_location)"
+                f"resolved question {question.question_id!r} references unknown evidence: "
+                f"{sorted(unknown_refs)}"
+            )
+    for contradiction in record.contradictions:
+        unknown_refs = set(contradiction.evidence_refs) - evidence_ids
+        if unknown_refs:
+            raise RoleOperationError(
+                f"contradiction {contradiction.topic!r} references unknown evidence: "
+                f"{sorted(unknown_refs)}"
+            )
+
+    for evidence in record.evidence:
+        if not evidence.source_identity or not evidence.source_location:
+            raise RoleOperationError(
+                f"material finding {evidence.evidence_id} missing provenance "
+                "(source_identity or source_location)"
             )
