@@ -94,7 +94,8 @@ class ScriptedCodingBackend:
         return CodingBackendResult(
             execution_result=self._result,
             observation=self._observation,
-            reported_changed_paths=(),
+            # Synthetic offline fixture: this backend represents the task's declared target paths.
+            reported_changed_paths=tuple(target.path for target in request.task.target_paths),
         )
 
 
