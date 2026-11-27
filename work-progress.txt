@@ -1,0 +1,45 @@
+# Breakdown — Source-Grounded Agent Framework Work Progress
+
+Date & Time: 2026-11-26 16:59:23 America/Los_Angeles
+Repository: https://github.com/itz1508/Breakdown
+Base branch/ref: main
+Base commit inspected: f5b7821ccf6d2a1c99db541e2b57645e68121497
+Work branch: refactor/agent-source-grounded-framework
+Status: Partially Ready
+
+## Completed
+
+- Inspected the current main source, package structure, agent implementations, contracts, tool allowlists, Runtime, Storage, tests, evaluation runner, packaging metadata and workflow YAML.
+- Reviewed the supplied Anthropic app-spec, tool-using-agent tutorial, structured-JSON extraction notebook, code-reviewer guidance, synthetic test-case notebook and evaluator-optimizer workflow.
+- Added breakdown/agents/WORKING_FRAMEWORK.md with source authority, readiness, evidence, authorization, testing, code review, bounded evaluator feedback, collaboration challenge protocol and reference provenance.
+- Added a common prompt loader and connected the four existing model-loop agents to the shared framework plus their colocated SKILL.md.
+- Updated Researcher, Auditor, Coder and Planner role guidance to reflect actual allowed tools and stronger evidence/review methods.
+- Moved Builder to breakdown/builder/, removed the former nested package, updated imports, tests, package assets and workflow skill path.
+- Wired Builder's shared and role-specific instructions into CodingBackendRequest and the live coding backend; added regression coverage for the system prompt boundary.
+- Added focused validation: Researcher reports baseline AST inspection status and refuses paths resolving outside the repository; Auditor rejects findings referencing unknown requirements; Coder rejects evidence outside requested scope; Planner rejects plan requirements without reviewed findings.
+- Updated stale Runtime test and offline-evaluation imports to current package owners; corrected Runtime test repository-root resolution after test relocation.
+- Updated README, AGENTS.md and architecture/development/onboarding/migration docs to distinguish current implementation from the accepted six-agent target.
+- Preserved source provenance and reviewed revisions in the shared framework reference index.
+
+## Verification
+
+- Remote branch files were fetched again after edits. Builder exists at breakdown/builder/ and the old nested Builder files return 404 on the work branch.
+- Import references and package-path consumers identified during the source audit were updated.
+- GitHub combined commit status returned no status checks; the workflow-run query returned no runs for the checked branch commit.
+- Local pytest, Ruff, format, mypy and offline evaluation were not run. A local clone attempt could not resolve github.com in this environment. No test result is claimed.
+
+## Remaining
+
+- Implement and register the independent Discovery agent with its typed contracts and revisioned specification workflow.
+- Migrate the current eight-stage workflow and Runtime ownership to the accepted Host-controlled workflow without creating parallel authorities.
+- Implement the Host-owned invocation authorization grant at dispatch; current role allowlists and synchronization checks are not a run/package-bound InvocationGrant.
+- Complete the provider-independent agent tool support package under breakdown/agents/tools while preserving the current canonical Host tool authority and avoiding a second registry.
+- Integrate the independent Host-invoked verification capability required by the accepted target.
+- Run the repository's documented pytest, Ruff, format, mypy and offline evaluation commands in a local environment with the branch checked out; correct any failures and repeat.
+
+## Explicit non-adoptions
+
+- No fixed 200-case feature_list.json was generated. The referenced app_spec.txt is an example application specification, not a Breakdown specification; inventing 200 requirements/tests would violate evidence traceability. Test growth should be derived from accepted Breakdown requirements and risk.
+- No Builder prompt was produced because the Builder implementation was changed directly.
+- No subagent run is claimed; no subagent orchestration tool was available in this execution environment.
+- No PR, merge or change to main was made.
