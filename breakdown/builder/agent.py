@@ -28,6 +28,7 @@ from breakdown.shared.models import (
     StageContext,
     TaskResult,
     TokenUsage,
+    validate_target_path,
 )
 
 PER_TASK_CORRECTION_CAP = 2
@@ -69,8 +70,7 @@ class Builder:
                 continue
             result = await self._execute_task(task)
             results.append(result)
-            if result.criterion is CriterionResult.VALID:
-                applied.extend(target.path for target in task.target_paths)
+            applied.extend(result.reported_changed_paths)
             if result.criterion in stop_criteria:
                 stopped = True
         prepared = not stopped and all(row.criterion is CriterionResult.VALID for row in results)
@@ -87,6 +87,8 @@ class Builder:
         prior_error = ""
         attempts = 0
         max_attempts = PER_TASK_CORRECTION_CAP + 1
+        approved_paths = {target.path for target in task.target_paths}
+        reported_paths: list[str] = []
         while True:
             attempts += 1
             result = await self._backend.apply_task(
@@ -98,21 +100,58 @@ class Builder:
                 )
             )
             self._accumulate_usage(result)
+
+            invalid_paths: list[str] = []
+            for reported_path in result.reported_changed_paths:
+                try:
+                    normalized_path = validate_target_path(reported_path)
+                except ValueError:
+                    invalid_paths.append(reported_path)
+                    continue
+                if normalized_path != reported_path or normalized_path not in approved_paths:
+                    invalid_paths.append(reported_path)
+                if reported_path not in reported_paths:
+                    reported_paths.append(reported_path)
+
+            if invalid_paths:
+                return TaskResult(
+                    task_id=task.task_id,
+                    sequence=task.sequence,
+                    criterion=CriterionResult.NOT_VALID,
+                    execution_result=ExecutionResult.BLOCKED,
+                    expected=task.expected_result,
+                    actual_observation=(
+                        f"{result.observation}; backend reported paths outside the exact "
+                        f"approved task scope: {sorted(set(invalid_paths))}"
+                    ),
+                    attempts=attempts,
+                    reported_changed_paths=tuple(reported_paths),
+                )
+
             criterion = _criterion_for(result.execution_result)
+            if criterion is CriterionResult.VALID and not reported_paths:
+                criterion = CriterionResult.UNCERTAINTY
             terminal = (
                 criterion is CriterionResult.VALID
+                or criterion is CriterionResult.UNCERTAINTY
                 or attempts >= max_attempts
                 or result.execution_result is ExecutionResult.BLOCKED
             )
             if terminal:
+                observation = result.observation
+                if result.execution_result is ExecutionResult.COMPLETED and not reported_paths:
+                    observation = (
+                        f"{observation}; backend reported no changed paths for the completed task"
+                    )
                 return TaskResult(
                     task_id=task.task_id,
                     sequence=task.sequence,
                     criterion=criterion,
                     execution_result=result.execution_result,
                     expected=task.expected_result,
-                    actual_observation=result.observation,
+                    actual_observation=observation,
                     attempts=attempts,
+                    reported_changed_paths=tuple(reported_paths),
                 )
             prior_error = result.observation
 
