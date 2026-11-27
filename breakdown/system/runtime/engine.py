@@ -19,7 +19,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import secrets
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from graphlib import CycleError, TopologicalSorter
@@ -709,7 +709,7 @@ class WorkflowEngine:
             verdicts = tuple(
                 CheckResult(
                     check_ref=task.task_id,
-                    criterion=CriterionResult.NOT_VALID,
+                    criterion=CriterionResult.UNCERTAINTY,
                     expected=task.expected_result,
                     actual_observation="independent verifier is not configured or sandbox is unavailable",
                 )
@@ -719,16 +719,20 @@ class WorkflowEngine:
 
         verification_input = build_verification_input(run_id, plan, build_output, sandbox)
         request = verification_request(verification_input)
+        stage = self.definition.get_stage("build_execution")
         try:
-            response = asyncio.run(verifier.generate(request))
+            response = self._run_awaitable_with_timeout(
+                lambda: verifier.generate(request),
+                stage.timeout_seconds,
+            )
         except Exception as exc:
             verdicts = tuple(
                 CheckResult(
                     check_ref=task.task_ref,
-                    criterion=CriterionResult.NOT_VALID,
+                    criterion=CriterionResult.UNCERTAINTY,
                     expected=task.expected_result,
                     actual_observation=(
-                        "independent verifier invocation raised " + type(exc).__name__
+                        "independent verifier invocation unavailable: " + type(exc).__name__
                     ),
                 )
                 for task in verification_input.tasks
@@ -978,20 +982,16 @@ class WorkflowEngine:
         return self._store("retained_evidence", StoredValue(value=value), "runtime")
 
     @staticmethod
-    def _activate_with_timeout(
-        contract: StageContract,
-        input_value: BaseModel,
-        context: StageContext,
-        roles: Mapping[str, Any],
+    def _run_awaitable_with_timeout(
+        operation: Callable[[], Awaitable[Any]],
         timeout_seconds: int | None,
-    ) -> StageResult:
-        """Contract activation bounded by the stage's declared timeout_seconds."""
-        coro = activate_role_contract(contract, input_value, context, roles)
-
-        async def _bounded() -> StageResult:
+    ) -> Any:
+        """Run async work safely from sync Runtime code, even inside an active event loop."""
+        async def _bounded() -> Any:
+            awaitable = operation()
             if timeout_seconds is None:
-                return await coro
-            return await asyncio.wait_for(coro, timeout=float(timeout_seconds))
+                return await awaitable
+            return await asyncio.wait_for(awaitable, timeout=float(timeout_seconds))
 
         try:
             loop = asyncio.get_running_loop()
@@ -1005,6 +1005,20 @@ class WorkflowEngine:
                 return pool.submit(asyncio.run, _bounded()).result()
 
         return asyncio.run(_bounded())
+
+    @staticmethod
+    def _activate_with_timeout(
+        contract: StageContract,
+        input_value: BaseModel,
+        context: StageContext,
+        roles: Mapping[str, Any],
+        timeout_seconds: int | None,
+    ) -> StageResult:
+        """Contract activation bounded by the stage's declared timeout_seconds."""
+        return WorkflowEngine._run_awaitable_with_timeout(
+            lambda: activate_role_contract(contract, input_value, context, roles),
+            timeout_seconds,
+        )
 
     def _handle_stage_failure(
         self,
