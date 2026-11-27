@@ -15,12 +15,12 @@ from pathlib import Path
 
 from breakdown.agents.prompt import load_agent_prompt
 from breakdown.shared.base import RoleOperationError
-from breakdown.shared.models import CodingBackend
 from breakdown.shared.models import (
     BuildExecutionInput,
     BuildExecutionOutput,
     BuildTask,
     CheckResult,
+    CodingBackend,
     CodingBackendRequest,
     CodingBackendResult,
     CriterionResult,
