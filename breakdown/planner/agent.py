@@ -32,15 +32,35 @@ class Planner:
         self, input_value: ImplementationPlanningInput, context: StageContext
     ) -> ImplementationPlanningOutput:
         findings = [finding.model_dump(mode="json") for finding in input_value.classified_findings]
+        normalized_evidence = [
+            evidence.model_dump(mode="json") for evidence in input_value.normalized_evidence
+        ]
+        fixtures = [
+            fixture.model_dump(mode="json") for fixture in input_value.reviewed_fixture_specifications
+        ]
         unresolved = [question.model_dump(mode="json") for question in input_value.reviewed_unresolved_questions]
+        processing_plan = input_value.processing_plan.model_dump(mode="json")
+        checkpoint_context = {
+            "repository_identity": input_value.source_checkpoint.repository_identity,
+            "commit_sha": input_value.source_checkpoint.commit_sha,
+            "captured_at": input_value.source_checkpoint.captured_at.isoformat(),
+            "tracked_file_count": len(input_value.source_checkpoint.file_hashes),
+            "untracked_file_count": len(input_value.source_checkpoint.untracked_file_hashes),
+        }
         prompt = (
-            "Create the ImplementationPlan for this request.\n"
+            "Create one ImplementationPlan from the accepted intent and reviewed evidence.\n"
             f"Exact user intent:\n{input_value.exact_user_intent}\n\n"
+            f"Planning processing plan:\n{render_json(processing_plan)}\n\n"
             f"Classified findings:\n{render_json(findings)}\n\n"
-            f"Unresolved questions:\n{render_json(unresolved)}\n\n"
-            "Analyze planning gaps, resolve the ones Planning owns, and produce "
-            "ordered cohesive BuildTasks with target paths, reuse decisions, "
-            "expected results, and validation steps."
+            f"Normalized evidence and provenance:\n{render_json(normalized_evidence)}\n\n"
+            f"Reviewed fixture specifications:\n{render_json(fixtures)}\n\n"
+            f"Reviewed unresolved questions:\n{render_json(unresolved)}\n\n"
+            f"Source checkpoint context:\n{render_json(checkpoint_context)}\n\n"
+            "Analyze requirement coverage, existing capability reuse, interface and dependency "
+            "compatibility, target-path ownership, security, fixtures, and verification coverage. "
+            "Resolve only planning-owned gaps. Preserve unresolved questions, map every task to "
+            "reviewed requirement/evidence, and produce cohesive independently verifiable tasks "
+            "with target paths, expected outcomes, and validation steps. Do not invent evidence."
         )
         request = RoleBackendRequest(
             operation="create_implementation_plan",
