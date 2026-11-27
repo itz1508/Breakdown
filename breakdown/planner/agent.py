@@ -66,3 +66,8 @@ def _validate_trace(output: ImplementationPlanningOutput, input_value: Implement
     untraced = finding_refs - declared
     if untraced:
         raise RoleOperationError(f"requirement trace incomplete; missing: {sorted(untraced)}")
+    unsupported = declared - finding_refs
+    if unsupported:
+        raise RoleOperationError(
+            f"plan references requirements without reviewed findings: {sorted(unsupported)}"
+        )
