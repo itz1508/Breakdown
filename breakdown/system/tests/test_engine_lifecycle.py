@@ -8,20 +8,20 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from breakdown.approvals import ApprovalManager
-from breakdown.artifact_store import ArtifactStore
-from breakdown.engine import EngineStores, WorkflowEngine, load_workflow
-from breakdown.events import EventStore
-from breakdown.memory import MemoryStore, validate_memory_path
-from breakdown.models import (
+from breakdown.system.runtime.approvals import ApprovalManager
+from breakdown.system.storage.artifact_store import ArtifactStore
+from breakdown.system.runtime.engine import EngineStores, WorkflowEngine, load_workflow
+from breakdown.system.storage.events import EventStore
+from breakdown.system.memory import MemoryStore, validate_memory_path
+from breakdown.shared.models import (
     CompletionRecord,
     EventType,
     ExecutionResult,
     RunState,
     TokenUsage,
 )
-from breakdown.run_store import RunStore
-from breakdown.safety import SafetyBoundary
+from breakdown.system.storage.run_store import RunStore
+from breakdown.system.safety import SafetyBoundary
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -166,7 +166,7 @@ class ScriptedRoleBackend:
         self._scripted = dict(scripted)
 
     async def generate(self, request: Any) -> Any:
-        from breakdown.models import RoleBackendResponse, TokenUsage
+        from breakdown.shared.models import RoleBackendResponse, TokenUsage
 
         payload = self._scripted.get(request.operation)
         if payload is None:
@@ -184,7 +184,7 @@ class _ScriptedCodingBackend:
     """Applies the approved change inside the sandbox (simulated build work)."""
 
     async def apply_task(self, request: Any) -> Any:
-        from breakdown.models import CodingBackendResult
+        from breakdown.shared.models import CodingBackendResult
 
         sandbox = Path(request.sandbox_root)
         (sandbox / "src" / "calc.py").write_text(
@@ -213,7 +213,7 @@ class _E2E:
         self.safety = SafetyBoundary(target_root=self.target, state_root=state)
         self.memory = MemoryStore(state)
         self.definition = _definition()
-        from breakdown.contracts import build_contract_registry
+        from breakdown.system.runtime.contracts import build_contract_registry
         from breakdown.system.tools.toolkit import RoleToolkit
         from breakdown.auditor.agent import Auditor
         from breakdown.builder.agent import Builder
@@ -426,7 +426,7 @@ def test_start_run_pins_definition_and_checkpoint(e2e: _E2E) -> None:
 
 
 def test_advance_unknown_run(e2e: _E2E) -> None:
-    from breakdown.engine import EngineError
+    from breakdown.system.runtime.engine import EngineError
 
     with pytest.raises(EngineError):
         e2e.engine.advance("run-ghost")
