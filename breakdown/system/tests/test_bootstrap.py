@@ -124,6 +124,7 @@ def test_build_runtime_routes_per_role_backends(target_repo: Path) -> None:
         role_backends={"auditor": auditor_backend},
         role_backend=fallback_backend,
         coding_backend=OfflineDemoCodingBackend("record the demo change"),
+        offline_demo=True,
     )
     try:
         record = runtime.engine.start_run("record the demo change", user_identity="u")
@@ -148,6 +149,7 @@ def test_build_runtime_missing_role_backend_raises(target_repo: Path) -> None:
         _settings(target_repo),
         role_backend=None,
         coding_backend=OfflineDemoCodingBackend("x"),
+        offline_demo=True,
     )
     try:
         record = runtime.engine.start_run("request", user_identity="u")
@@ -186,6 +188,7 @@ def _full_bindings() -> list[dict[str, Any]]:
         _live_binding_payload("auditor", ["create_research_proposal", "review_research_findings"], "b-aud"),
         _live_binding_payload("researcher", ["execute_research"], "b-res"),
         _live_binding_payload("planner", ["create_implementation_plan"], "b-pln"),
+        _live_binding_payload("verifier", ["verify_build_task"], "b-ver"),
     ]
 
 
@@ -225,8 +228,9 @@ def test_binding_coverage_passes_with_complete_bindings(target_repo: Path, tmp_p
     settings = _settings(target_repo, _write_bindings(tmp_path, _full_bindings()))
     runtime = build_runtime(
         settings,
+        role_backends={"verifier": OfflineDemoRoleBackend("x")},
         role_backend=OfflineDemoRoleBackend("x"),
         coding_backend=OfflineDemoCodingBackend("x"),
     )
-    assert len(runtime.bindings.all()) == 3
+    assert len(runtime.bindings.all()) == 4
     runtime.lock.release()
