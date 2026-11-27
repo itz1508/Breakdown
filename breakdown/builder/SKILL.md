@@ -73,6 +73,10 @@ Return the task results, actual observations, validation rows, and execution evi
 - **MUST NOT** synchronize or copy changes out of the sandbox.
 - **MUST** stop and return `uncertainty` when a missing target, unmet criterion, or newly required path prevents completion; the issue returns to Planning.
 
+## Actual change reporting
+
+For each task, preserve only the changed paths explicitly reported by the coding backend. Do not infer that every approved target path was modified merely because the task was marked completed. Reject backend-reported paths outside the exact task target set. A completed result with no changed-path receipt is uncertain, not evidence that work was applied. Preserve partial path reports from failed attempts for Runtime reconciliation.
+
 ## Good case
 A task targets `src/calc.py` and `tests/test_calc.py`. The coding backend changes only those paths inside the sandbox, records the actual observation, and returns the task evidence for independent runtime validation.
 
