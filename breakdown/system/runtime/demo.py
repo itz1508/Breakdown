@@ -136,7 +136,7 @@ def _finish_demo_outputs(proposal: dict[str, Any], research: dict[str, Any]) -> 
                     "source_evidence": ["demo-f-1"],
                     "capability_reuse": [],
                     "reference_ids": [],
-                    "expected_result": "DEMO_CHANGE.md exists with the request text",
+                    "expected_result": "DEMO_CHANGE.md contains the request text provided to this run",
                     "validation_steps": [
                         {
                             "step_id": "demo-v-1",
@@ -169,15 +169,67 @@ def _finish_demo_outputs(proposal: dict[str, Any], research: dict[str, Any]) -> 
 
 
 class OfflineDemoRoleBackend:
-    """Scripted role backend for the offline demo path."""
+    """Scripted role backend plus deterministic, fixture-only demo verification."""
 
     def __init__(self, request_text: str) -> None:
         self._outputs = demo_role_outputs(request_text)
+        self._request_text = request_text.strip() or "Demonstrate the OneShot Breakdown workflow"
 
     async def generate(self, request: Any) -> RoleBackendResponse:
-        payload: Mapping[str, Any] | None = self._outputs.get(request.operation)
+        if request.operation == "verify_build_task":
+            start_tag = "<verification_input_json>"
+            end_tag = "</verification_input_json>"
+            try:
+                start = request.prompt.index(start_tag) + len(start_tag)
+                end = request.prompt.index(end_tag, start)
+                verification_input = BuildVerificationInput.model_validate(
+                    json.loads(request.prompt[start:end].strip())
+                )
+            except (ValueError, json.JSONDecodeError) as exc:
+                raise DemoBackendError(
+                    "offline demo verifier received invalid verification input"
+                ) from exc
+
+            verdicts: list[dict[str, str]] = []
+            for task in verification_input.tasks:
+                command_steps = [
+                    step.step_id for step in task.validation_steps if step.kind == "command"
+                ]
+                observed = [
+                    file for file in task.observed_files
+                    if file.status == "read" and not file.truncated
+                ]
+                has_request_text = any(
+                    self._request_text in file.content for file in observed
+                )
+                if command_steps:
+                    criterion = CriterionResult.UNCERTAINTY
+                    observation = (
+                        f"offline demo cannot execute command steps: {sorted(command_steps)}"
+                    )
+                elif has_request_text:
+                    criterion = CriterionResult.VALID
+                    observation = "Host observed the exact request text in the sandbox file."
+                else:
+                    criterion = CriterionResult.NOT_VALID
+                    observation = (
+                        "Host did not observe the exact request text in a readable sandbox file."
+                    )
+                verdicts.append(
+                    {
+                        "check_ref": task.task_ref,
+                        "criterion": criterion.value,
+                        "expected": task.expected_result,
+                        "actual_observation": observation,
+                    }
+                )
+            payload: Mapping[str, Any] = {"task_verifications": verdicts}
+        else:
+            payload = self._outputs.get(request.operation)
         if payload is None:
-            raise DemoBackendError(f"offline demo backend has no scripted output for {request.operation}")
+            raise DemoBackendError(
+                f"offline demo backend has no scripted output for {request.operation}"
+            )
         return RoleBackendResponse(
             structured_output=dict(payload),
             text="",
