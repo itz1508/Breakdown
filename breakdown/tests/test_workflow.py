@@ -121,7 +121,7 @@ def _decision_outputs(stage: dict[str, Any]) -> set[str]:
 
 def test_definition_identity(definition: dict[str, Any]) -> None:
     assert definition["workflow_id"] == "oneshot.breakdown"
-    assert definition["definition_version"] == 3
+    assert definition["definition_version"] == 4
 
 
 def test_eight_canonical_stages_in_order(stages: list[dict[str, Any]]) -> None:
@@ -163,6 +163,11 @@ def test_workflow_labels_keep_methodology_out_of_stage_list(definition: dict[str
     assert labels["build_execution"] == "Builder — Mutation"
     assert labels["completion"] == "Final_result"
     assert "final_review" not in labels
+    synchronization = _stage(stages, "build_execution")["synchronization"]
+    assert synchronization["sandbox_mutation_owner"] == "builder"
+    assert synchronization["authorization_owner"] == "runtime"
+    assert synchronization["synchronization_owner"] == "runtime"
+    assert "execution_owner" not in synchronization
 
 
 def test_stage_kinds_owners_operations(stages: list[dict[str, Any]]) -> None:
