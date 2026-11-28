@@ -121,7 +121,7 @@ def _decision_outputs(stage: dict[str, Any]) -> set[str]:
 
 def test_definition_identity(definition: dict[str, Any]) -> None:
     assert definition["workflow_id"] == "oneshot.breakdown"
-    assert definition["definition_version"] == 1
+    assert definition["definition_version"] == 2
 
 
 def test_eight_canonical_stages_in_order(stages: list[dict[str, Any]]) -> None:
@@ -129,6 +129,40 @@ def test_eight_canonical_stages_in_order(stages: list[dict[str, Any]]) -> None:
     assert tuple(ids) == CANONICAL_STAGES
     orders = [stage["order"] for stage in stages]
     assert orders == list(range(1, len(CANONICAL_STAGES) + 1))
+
+
+def test_final_review_is_runtime_methodology_not_a_workflow_stage(
+    definition: dict[str, Any], stages: list[dict[str, Any]]
+) -> None:
+    methodology = definition["definition"]["runtime_methodologies"]["final_review"]
+    assert methodology["classification"] == "runtime_methodology"
+    assert methodology["workflow_stage"] is False
+    assert methodology["boundary"] == {
+        "runs_after": "implementation_planning",
+        "completes_before": "plan_approval",
+    }
+    assert methodology["tool"]["id"] == "verify_all"
+    assert methodology["tool"]["ordered_operations"] == [
+        "run_preflight",
+        "compute_plan_sha256",
+        "compute_source_checkpoint_sha256",
+        "generate_confirmation_id",
+        "compute_combined_seal_sha256",
+        "persist_preconfirmation_seal",
+    ]
+    assert methodology["tool"]["authority"]["authorizes_builder_mutation"] is False
+    assert methodology["preconfirmation"]["seal_status_does_not_mean"] == "user_approved"
+    assert methodology["while_awaiting_confirmation"]["host_runs_in_background"] is True
+    assert methodology["mutation_release"]["final_integrity_check"] == "immediately_before_builder_mutation"
+    assert "final_review" not in {stage["id"] for stage in stages}
+
+
+def test_workflow_labels_keep_methodology_out_of_stage_list(definition: dict[str, Any]) -> None:
+    labels = definition["definition"]["workflow_labels"]
+    assert labels["plan_approval"] == "Await User Confirmation"
+    assert labels["build_execution"] == "Builder — Mutation"
+    assert labels["completion"] == "Final_result"
+    assert "final_review" not in labels
 
 
 def test_stage_kinds_owners_operations(stages: list[dict[str, Any]]) -> None:
