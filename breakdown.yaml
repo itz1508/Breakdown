@@ -1,5 +1,5 @@
 workflow_id: oneshot.breakdown
-definition_version: 3
+definition_version: 4
 definition:
   pin_at_workflow_start:
   - workflow_id
@@ -685,9 +685,9 @@ stages:
   - not_valid
   - uncertainty
   synchronization:
-    preparation_owner: builder
+    sandbox_mutation_owner: builder
     authorization_owner: runtime
-    execution_owner: execution_service
+    synchronization_owner: runtime
     reconciliation_owner: runtime
     requires:
     - task_results_valid
