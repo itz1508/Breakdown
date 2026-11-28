@@ -1,5 +1,5 @@
 workflow_id: oneshot.breakdown
-definition_version: 2
+definition_version: 3
 definition:
   pin_at_workflow_start:
   - workflow_id
@@ -15,6 +15,7 @@ definition:
     plan_approval: Await User Confirmation
     build_execution: Builder — Mutation
     completion: Final_result
+  # [EXPLAIN] Runtime methodology metadata; none of these entries are workflow stages.
   runtime_methodologies:
     final_review:
       classification: runtime_methodology
@@ -48,6 +49,9 @@ definition:
           grants_user_approval: false
           authorizes_builder_mutation: false
       preconfirmation:
+        record_owner: application
+        persistence_owner: storage
+        persisted_before_user_confirmation: true
         state: awaiting_user_confirmation
         seal_status_means: package_integrity_established
         seal_status_does_not_mean: user_approved
@@ -75,6 +79,8 @@ definition:
           require_user_confirmation_again: true
           builder_mutation_allowed: false
       mutation_release:
+        decision_record_owner: application
+        decision_record_persistence_owner: storage
         requires:
         - explicit_user_confirmation
         - matching_confirmation_id
@@ -340,6 +346,7 @@ dependency_validation:
   validation_method:
     forward_edges: stdlib_graphlib_topological_sorter
     loop_back_edges: explicit_bounded_transition_validation
+# [WORKFLOW] Only entries in this list are workflow stages.
 stages:
 - id: research_proposal
   order: 1
@@ -760,6 +767,28 @@ stages:
     - partial_completion_evidence
     - completion_failure_record
 ownership:
+  application:
+    stages: []
+    kind: workflow_authority
+    owns:
+    - workflow_state_authority
+    - stage_transition_authority
+    - pending_confirmation_lifecycle
+    - user_decision_authority
+    - approval_record_lifecycle
+    - terminal_state_authority
+  storage:
+    stages: []
+    kind: durable_persistence
+    owns:
+    - artifact_records
+    - run_records
+    - pending_confirmation_records
+    - approval_records
+    - event_records
+    - source_checkpoints
+    - canonical_digests
+    - retained_evidence
   user:
     stages:
     - research_approval
@@ -792,29 +821,31 @@ ownership:
     - completion
     methodologies:
     - final_review
-    kind: lifecycle_coordination
+    kind: host_orchestration
     owns:
     - definition_pinning
+    - proactive_step_preparation
     - final_review_orchestration
+    - verify_all_tool_dispatch
     - preconfirmation_integrity_sealing
     - background_integrity_monitoring
+    - approval_binding_validation
     - mutation_release_authorization
-    - stage_progression
+    - stage_dispatch
     - artifact_validation
-    - artifact_persistence
-    - approval_binding
     - budget_enforcement
     - action_guards
     - recovery_routing
-    - processing_plan_persistence
     - synchronization_authorization
     - synchronization_reconciliation
     - cancellation_recording
-    - completion_recording
-    - event_persistence
+    - completion_coordination
+    - event_emission
 approval_boundary:
   preconfirmation_seal:
     generated_by: runtime_methodologies.final_review.tool
+    record_owner: application
+    persistence_owner: storage
     status: awaiting_user_confirmation
     proves:
     - package_preflight_was_valid
