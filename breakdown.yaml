@@ -1,11 +1,98 @@
 workflow_id: oneshot.breakdown
-definition_version: 1
+definition_version: 2
 definition:
   pin_at_workflow_start:
   - workflow_id
   - definition_version
   - definition_digest
   mutation_after_run_start: prohibited
+  workflow_labels:
+    research_proposal: Discovery
+    research_approval: Research Scope Confirmation
+    research_execution: Accepted Research
+    findings_review: Evidence Comparison
+    implementation_planning: Planning
+    plan_approval: Await User Confirmation
+    build_execution: Builder — Mutation
+    completion: Final_result
+  runtime_methodologies:
+    final_review:
+      classification: runtime_methodology
+      workflow_stage: false
+      owner: runtime
+      boundary:
+        runs_after: implementation_planning
+        completes_before: plan_approval
+      purpose: Prepare the exact finalized package for explicit user confirmation.
+      implementation_status: partially_wired
+      tool:
+        id: verify_all
+        kind: tool
+        purpose: Validate the finalized package, establish its integrity seal, and return confirmation details.
+        ordered_operations:
+        - run_preflight
+        - compute_plan_sha256
+        - compute_source_checkpoint_sha256
+        - generate_confirmation_id
+        - compute_combined_seal_sha256
+        - persist_preconfirmation_seal
+        outputs:
+        - preflight_result
+        - confirmation_id
+        - plan_sha256
+        - source_checkpoint_sha256
+        - sealed_sha256
+        authority:
+          validates_package: true
+          creates_integrity_seal: true
+          grants_user_approval: false
+          authorizes_builder_mutation: false
+      preconfirmation:
+        state: awaiting_user_confirmation
+        seal_status_means: package_integrity_established
+        seal_status_does_not_mean: user_approved
+        present_to_user:
+        - finalized_implementation_plan
+        - confirmation_id
+        - plan_sha256
+        - source_checkpoint_sha256
+        - sealed_sha256
+      while_awaiting_confirmation:
+        host_runs_in_background: true
+        host_anticipates_next_workflow_step: true
+        monitor:
+        - exact_plan_revision
+        - frozen_plan_hash
+        - source_checkpoint_hash
+        - preflight_result_digest
+        - sealed_sha256
+        on_integrity_change:
+          invalidate_pending_confirmation: true
+          preserve_previous_plan_revision: true
+          create_new_draft_revision: true
+          return_to: implementation_planning
+          rerun_final_review: true
+          require_user_confirmation_again: true
+          builder_mutation_allowed: false
+      mutation_release:
+        requires:
+        - explicit_user_confirmation
+        - matching_confirmation_id
+        - matching_plan_revision
+        - matching_plan_sha256
+        - matching_source_checkpoint_sha256
+        - matching_sealed_sha256
+        - preflight_result.criterion_result == valid
+        final_integrity_check: immediately_before_builder_mutation
+      current_runtime_support:
+        - freeze_plan_hash
+        - preflight_check
+        - pending_decision_artifact_binding
+      runtime_work_remaining:
+        - unified_verify_all_tool
+        - confirmation_id_and_preconfirmation_seal_persistence
+        - background_integrity_monitoring_while_awaiting_confirmation
+        - mutation_release_check_against_confirmation_id_and_seal
 vocabularies:
   execution_status:
   - not_run
@@ -42,9 +129,14 @@ digests:
   source_checkpoint_metadata:
   - captured_at
   approval_binding:
+  - confirmation_id
+  - sealed_sha256
   - frozen_plan_hash
   - approved_source_checkpoint_hash
+  - preflight_result_digest
   - canonical_user_approval_record
+  - run_id
+  - session_id
 cost_budget:
   per_workflow:
     max_tokens: 500000
@@ -102,7 +194,8 @@ implementation_plan_schema:
   task_rules:
     task_unit: cohesive_independently_verifiable_change
     minimum_target_paths: 1
-    execution_order: sequential
+    task_order: declared_dependency_order
+    mutation_scope: approved_task_todos_only
     uncertainty_allowed_in_build: false
     expected_result_required: true
     validation_required: true
@@ -116,6 +209,8 @@ schema_validation:
   - artifact_read_before_use
   - decision_record_before_transition
   - frozen_plan_before_approval
+  - final_review_before_user_confirmation
+  - approval_binding_before_builder_mutation
   - build_input_before_source_effects
   - completion_record_before_terminal_state
   model_rules:
@@ -161,6 +256,10 @@ schema_validation:
     bound_artifacts_current: true
     bound_digests_match: true
     approve_only_authorizes_next_source_effect_stage: true
+    pending_integrity_seal_is_not_user_approval: true
+    confirmation_id_is_not_authority_by_itself: true
+    explicit_user_confirmation_required: true
+    current_binding_rechecked_before_builder_mutation: true
     chat_text_not_approval: true
   implementation_plan_rules:
     one_canonical_plan: true
@@ -417,8 +516,9 @@ stages:
   kind: role
   owner: planner
   operation: create_implementation_plan
-  purpose: Create the single authoritative Implementation Plan with cohesive ordered Build tasks, approved
-    paths, reuse decisions, expected results, and validation.
+  purpose: Create and finalize the single authoritative Implementation Plan, including cohesive tasks,
+    approved paths, reuse decisions, expected results, and validation. Planning is complete before
+    Final Review begins.
   requires:
   - implementation_planning_processing_plan
   - classified_findings
@@ -487,7 +587,9 @@ stages:
   kind: decision
   owner: user
   operation: record_plan_approval
-  purpose: Approve, request changes to, or decline the frozen Implementation Plan.
+  purpose: Present the finalized package and its Confirmation_ID and SHA for explicit user confirmation;
+    accept confirmation, a request for changes, or decline. Final Review is runtime methodology,
+    not a stage or agent.
   requires:
   - implementation_plan
   - frozen_plan
@@ -551,8 +653,9 @@ stages:
   kind: role
   owner: builder
   operation: execute_build
-  purpose: Execute approved cohesive tasks in a sandbox, validate results, and prepare synchronization
-    for Runtime authorization.
+  purpose: Apply only the approved TaskTodo mutations inside the authorized sandbox. Builder cannot
+    change the approved package, expand target paths, or authorize synchronization. Runtime owns
+    integrity enforcement, synchronization authorization, and reconciliation.
   requires:
   - build_execution_processing_plan
   - implementation_plan
@@ -613,8 +716,8 @@ stages:
   kind: deterministic
   owner: runtime
   operation: record_completion
-  purpose: Record the terminal outcome, changed paths, validation, retained evidence, remaining work,
-    cost, and terminal state.
+  purpose: Retain the terminal outcome, changed paths, validation evidence, remaining work, cost,
+    source checkpoint, and terminal state.
   accepts:
     success:
       requires:
@@ -687,9 +790,15 @@ ownership:
   runtime:
     stages:
     - completion
+    methodologies:
+    - final_review
     kind: lifecycle_coordination
     owns:
     - definition_pinning
+    - final_review_orchestration
+    - preconfirmation_integrity_sealing
+    - background_integrity_monitoring
+    - mutation_release_authorization
     - stage_progression
     - artifact_validation
     - artifact_persistence
@@ -704,17 +813,42 @@ ownership:
     - completion_recording
     - event_persistence
 approval_boundary:
+  preconfirmation_seal:
+    generated_by: runtime_methodologies.final_review.tool
+    status: awaiting_user_confirmation
+    proves:
+    - package_preflight_was_valid
+    - plan_and_source_hashes_were_captured
+    - confirmation_id_is_bound_to_the_seal
+    does_not_prove:
+    - user_approved_the_package
+    - builder_mutation_is_authorized
   implementation_requires:
+  - explicit_user_confirmation
   - recorded_plan_approval
   - plan_approval_action_is_approve
+  - matching_confirmation_id
   - exact_frozen_plan_hash
   - exact_approved_plan_revision
+  - matching_sealed_sha256
   - matching_approval_hash
   - matching_source_checkpoint
   - preflight_result.criterion_result == valid
   - matching_build_execution_processing_plan
+  - final_integrity_check_immediately_before_builder_mutation
   changes_to_approved_package:
     return_to: implementation_planning
+    preserve_previous_revision: true
+    create_new_draft_revision: true
+    invalidate:
+    - pending_confirmation
+    - confirmation_id
+    - sealed_sha256
+    - frozen_plan
+    - frozen_plan_hash
+    - preflight_result
+    - build_execution_processing_plan
+    require_new_final_review: true
     require_new_freeze: true
     require_new_preflight: true
     require_new_build_execution_processing_plan: true
@@ -729,6 +863,12 @@ handoff_rules:
 - Decision stages consume the processing plan prepared for their approved destination.
 - Role processors never invoke the next workflow role directly.
 - Criterion uncertainty never advances a decision or source-changing stage.
+- Final Review is a Runtime methodology, not a workflow stage or agent.
+- verify_all is a tool invoked by Final Review; it performs its ordered validation and digest operations.
+- A preconfirmation seal and Confirmation_ID identify a reviewed package but do not authorize mutation.
+- The Host may prepare and monitor the next step in the background; preparation never substitutes for user authority.
+- Builder applies only approved TaskTodo mutations; Builder does not own workflow progression or synchronization authorization.
+- Final_result is the terminal workflow phase; do not create a separate mutation-result phase.
 - Lifecycle failure and criterion not_valid are distinct.
 role_guidance:
   role_sources:
