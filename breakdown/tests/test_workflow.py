@@ -121,7 +121,7 @@ def _decision_outputs(stage: dict[str, Any]) -> set[str]:
 
 def test_definition_identity(definition: dict[str, Any]) -> None:
     assert definition["workflow_id"] == "oneshot.breakdown"
-    assert definition["definition_version"] == 2
+    assert definition["definition_version"] == 3
 
 
 def test_eight_canonical_stages_in_order(stages: list[dict[str, Any]]) -> None:
@@ -270,6 +270,12 @@ def test_ownership_alignment(definition: dict[str, Any], stages: list[dict[str, 
     assert ownership["builder"]["application_source_changes"] == "sandbox_only"
     assert "synchronization_authorization" in ownership["builder"]["does_not_own"]
     assert ownership["auditor"]["sub_roles"] == ["coder"]
+    assert "workflow_state_authority" in ownership["application"]["owns"]
+    assert "user_decision_authority" in ownership["application"]["owns"]
+    assert "pending_confirmation_records" in ownership["storage"]["owns"]
+    assert "artifact_records" in ownership["storage"]["owns"]
+    assert "background_integrity_monitoring" in ownership["runtime"]["owns"]
+    assert ownership["runtime"]["methodologies"] == ["final_review"]
 
 
 def test_approval_boundary(definition: dict[str, Any]) -> None:
