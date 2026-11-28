@@ -419,7 +419,7 @@ def test_cancel_mid_run(e2e: _E2E) -> None:
 
 def test_start_run_pins_definition_and_checkpoint(e2e: _E2E) -> None:
     record = e2e.engine.start_run("request", user_identity="u")
-    assert record.definition_version == 2
+    assert record.definition_version == 3
     assert record.definition_digest
     assert "source_checkpoint" in record.produced_artifacts
     assert "initial_request" in record.produced_artifacts
